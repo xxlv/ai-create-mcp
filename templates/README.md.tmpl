@@ -1,0 +1,25 @@
+# {{.ServerName}}
+
+{{.ServerDescription}}
+
+## Installation
+
+To install dependencies, run:
+
+```bash
+cd {{.ServerDirectory}}
+uv sync --dev --all-extras
+```
+
+## Usage
+
+Run the server with:
+
+```bash
+uv run {{.BinaryName}}
+```
+
+## About
+
+Version: {{.ServerVersion}}
+
