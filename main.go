@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"text/template"
+	"time"
 
 	_ "embed"
 
@@ -313,6 +316,16 @@ func createProject(path, name, description, version string, useClaude bool) erro
 	fmt.Printf("ℹ️ To install dependencies run:\n")
 	fmt.Printf("   cd %s\n", relPath)
 	fmt.Println("   uv sync --dev --all-extras")
+	return compileDep(relPath)
+}
+
+func compileDep(workspacePath string) error {
+	fmt.Printf("ℹ️ Installing dependencies...\n")
+	cmd := exec.Command("uv", "sync", "--dev", "--all-extras")
+	cmd.Dir = workspacePath
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to sync dependencies: %v", err)
+	}
 	return nil
 }
 
@@ -337,6 +350,56 @@ func updatePyProjectSettings(projectPath, version, description string) error {
 	defer file.Close()
 	return toml.NewEncoder(file).Encode(data)
 }
+func openBrowser(url string) error {
+	var cmd string
+	var args []string
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = "cmd"
+		args = []string{"/c", "start", url}
+	case "darwin":
+		cmd = "open"
+		args = []string{url}
+	default: // linux, bsd, etc
+		cmd = "xdg-open"
+		args = []string{url}
+	}
+
+	return exec.Command(cmd, args...).Start()
+}
+func runInspector(projectPath, projectName string) error {
+	cmd := exec.Command("npx", "@modelcontextprotocol/inspector", "uv", "--directory", projectPath, "run", projectName)
+	cmd.Stderr = os.Stderr
+
+	go tryOpenBrowser()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to run inspector: %v", err)
+	}
+	return nil
+}
+
+func tryOpenBrowser() {
+	url := "http://localhost:5173"
+	timeout := time.After(5 * time.Second)
+	tick := time.Tick(500 * time.Millisecond)
+	for {
+		select {
+		case <-timeout:
+			return
+		case <-tick:
+			resp, err := http.Get(url)
+			if err == nil && resp.StatusCode == 200 {
+				resp.Body.Close()
+				if err := openBrowser(url); err != nil {
+					fmt.Fprintf(os.Stderr, "⚠️ Warning: Inspector is running but failed to open browser: %v\n", err)
+				}
+				fmt.Printf("\n🔍 MCP Inspector is up and running at %s 🚀\n", url)
+				return
+			}
+		}
+	}
+}
 
 func main() {
 	var (
@@ -345,13 +408,16 @@ func main() {
 		version     string
 		description string
 		claudeApp   bool
+		inspector   bool
 	)
 
 	flag.StringVar(&path, "path", "", "Directory to create project in")
 	flag.StringVar(&name, "name", "", "Project name")
 	flag.StringVar(&version, "version", "", "Server version")
+	flag.BoolVar(&inspector, "inspector", true, "open inspector")
 	flag.StringVar(&description, "description", "", "Project description")
 	flag.BoolVar(&claudeApp, "claudeapp", true, "Enable/disable Claude.app integration")
+
 	flag.Parse()
 
 	if err := ensureUVInstalled(); err != nil {
@@ -360,7 +426,7 @@ func main() {
 
 	fmt.Println("Creating a new MCP server project using uv.")
 	fmt.Println("This will set up a Python project with MCP dependency.")
-	fmt.Println("\nLet's begin!\n")
+	fmt.Println("\nLet's begin!")
 
 	reader := bufio.NewReader(os.Stdin)
 	if name == "" {
@@ -421,5 +487,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	if inspector {
+		fmt.Fprintf(os.Stderr, "Auto run inspector: `%s`", "@modelcontextprotocol/inspector")
+		if err := runInspector(projectPath, name); err != nil {
+			fmt.Fprintf(os.Stderr, "❌ Error running inspector: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("✅ Inspector executed successfully")
+	}
 	os.Exit(0)
 }
