@@ -24,7 +24,7 @@ import (
 //go:embed templates/__init__.py.tmpl
 var initTpl string
 
-//go:embed templates/server.py.tmpl
+//go:embed templates/serveroas.py.tmpl
 var serverTpl string
 
 //go:embed templates/README.md.tmpl
@@ -188,13 +188,9 @@ func getPackageDirectory(path string) (string, error) {
 	return filepath.Dir(matches[0]), nil
 }
 
-type TemplateVars struct {
-	BinaryName        string
-	ServerName        string
-	ServerVersion     string
-	ServerDescription string
-	ServerDirectory   string
-}
+
+
+
 
 func copyTemplate(path, name, description, version string) error {
 	targetDir, err := getPackageDirectory(path)
@@ -207,12 +203,43 @@ func copyTemplate(path, name, description, version string) error {
 		return fmt.Errorf("failed to load pyproject.toml: %v", err)
 	}
 
-	templateVars := TemplateVars{
+	templateVars := TemplateData{
 		BinaryName:        pyproject.FirstBinary(),
 		ServerName:        name,
-		ServerVersion:     version,
+		ServerVersion:     "1.0.0",
 		ServerDescription: description,
 		ServerDirectory:   path,
+		Resources: []Resource{
+			{Name: "Note1", Description: "A simple note", URI: "note://internal/note1", MimeType: "text/plain"},
+		},
+		Prompts: []Prompt{
+			{
+				Name:        "summarize-notes",
+				Description: "Summarize all notes",
+				Arguments: []Argument{
+					{Name: "style", Description: "Summary style", Required: false},
+				},
+			},
+		},
+		Tools: []Tool{
+			{
+				Name:        "add-note",
+				Description: "Add a new note",
+				Arguments: []Argument{
+					{Name: "name", Description: "Note name", Required: true},
+					{Name: "content", Description: "Note content", Required: true},
+				},
+			},
+
+			{
+				Name:        "煞笔",
+				Description: "Add a new note",
+				Arguments: []Argument{
+					{Name: "name", Description: "Note name", Required: true},
+					{Name: "content", Description: "Note content", Required: true},
+				},
+			},
+		},
 	}
 
 	templates := []struct {
@@ -323,6 +350,9 @@ func compileDep(workspacePath string) error {
 	fmt.Printf("ℹ️ Installing dependencies...\n")
 	cmd := exec.Command("uv", "sync", "--dev", "--all-extras")
 	cmd.Dir = workspacePath
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to sync dependencies: %v", err)
 	}
@@ -371,6 +401,7 @@ func openBrowser(url string) error {
 func runInspector(projectPath, projectName string) error {
 	cmd := exec.Command("npx", "@modelcontextprotocol/inspector", "uv", "--directory", projectPath, "run", projectName)
 	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
 
 	go tryOpenBrowser()
 	if err := cmd.Run(); err != nil {
@@ -389,7 +420,7 @@ func tryOpenBrowser() {
 			return
 		case <-tick:
 			resp, err := http.Get(url)
-			if err == nil && resp.StatusCode == 200 {
+			if err == nil {
 				resp.Body.Close()
 				if err := openBrowser(url); err != nil {
 					fmt.Fprintf(os.Stderr, "⚠️ Warning: Inspector is running but failed to open browser: %v\n", err)
@@ -410,7 +441,6 @@ func main() {
 		claudeApp   bool
 		inspector   bool
 	)
-
 	flag.StringVar(&path, "path", "", "Directory to create project in")
 	flag.StringVar(&name, "name", "", "Project name")
 	flag.StringVar(&version, "version", "", "Server version")
@@ -423,7 +453,6 @@ func main() {
 	if err := ensureUVInstalled(); err != nil {
 		os.Exit(1)
 	}
-
 	fmt.Println("Creating a new MCP server project using uv.")
 	fmt.Println("This will set up a Python project with MCP dependency.")
 	fmt.Println("\nLet's begin!")
@@ -488,7 +517,6 @@ func main() {
 	}
 
 	if inspector {
-		fmt.Fprintf(os.Stderr, "Auto run inspector: `%s`", "@modelcontextprotocol/inspector")
 		if err := runInspector(projectPath, name); err != nil {
 			fmt.Fprintf(os.Stderr, "❌ Error running inspector: %v\n", err)
 			os.Exit(1)

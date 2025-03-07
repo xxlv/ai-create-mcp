@@ -1,0 +1,133 @@
+import asyncio
+from mcp.server.models import InitializationOptions
+import mcp.types as types
+from mcp.server import NotificationOptions, Server
+from pydantic import AnyUrl
+import mcp.server.stdio
+
+# Server state
+state: dict[str, str] = {}
+
+server = Server("{{.ServerName}}")
+
+{{if .Resources}}
+@server.list_resources()
+async def handle_list_resources() -> list[types.Resource]:
+    return [
+        {{range .Resources}}
+        types.Resource(
+            uri=AnyUrl("{{.URI}}"),
+            name="{{.Name}}",
+            description="{{.Description}}",
+            mimeType="{{.MimeType}}",
+        ),
+        {{end}}
+    ]
+
+@server.read_resource()
+async def handle_read_resource(uri: AnyUrl) -> str:
+    if uri.scheme != "note":
+        raise ValueError(f"Unsupported URI scheme: {uri.scheme}")
+    name = uri.path.lstrip("/")
+    return state.get(name, "")
+{{end}}
+
+{{if .Prompts}}
+@server.list_prompts()
+async def handle_list_prompts() -> list[types.Prompt]:
+    return [
+        {{range .Prompts}}
+        types.Prompt(
+            name="{{.Name}}",
+            description="{{.Description}}",
+            arguments=[
+                {{range .Arguments}}
+                types.PromptArgument(
+                    name="{{.Name}}",
+                    description="{{.Description}}",
+                    required={{.Required}},
+                ),
+                {{end}}
+            ],
+        ),
+        {{end}}
+    ]
+
+@server.get_prompt()
+async def handle_get_prompt(name: str, arguments: dict[str, str] | None) -> types.GetPromptResult:
+    if arguments is None:
+        arguments = {}
+    {{range .Prompts}}
+    if name == "{{.Name}}":
+        return types.GetPromptResult(
+            description="{{.Description}}",
+            messages=[
+                types.PromptMessage(
+                    role="user",
+                    content=types.TextContent(
+                        type="text",
+                        text=f"{{.Description}}:\n" + "\n".join(f"- {k}: {v}" for k, v in state.items())
+                    ),
+                )
+            ],
+        )
+    {{end}}
+    raise ValueError(f"Unknown prompt: {name}")
+{{end}}
+
+{{if .Tools}}
+@server.list_tools()
+async def handle_list_tools() -> list[types.Tool]:
+    return [
+        {{range .Tools}}
+        types.Tool(
+            name="{{.Name}}",
+            description="{{.Description}}",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    {{range .Arguments}}
+                    "{{.Name}}": {"type": "string"},
+                    {{end}}
+                },
+                "required": [{{range .Arguments}}{{if .Required}}"{{.Name}}",{{end}}{{end}}],
+            },
+        ),
+        {{end}}
+    ]
+
+@server.call_tool()
+async def handle_call_tool(name: str, arguments: dict | None) -> list[types.TextContent]:
+    if not arguments:
+        raise ValueError("Missing arguments")
+    {{range .Tools}}
+    if name == "{{.Name}}":
+        {{range .Arguments}}
+        {{.Name}} = arguments.get("{{.Name}}")
+        if {{if .Required}}not {{.Name}}{{else}}False{{end}}:
+            raise ValueError("Missing {{.Name}}")
+        {{end}}
+        state["{{range .Arguments}}{{.Name}}{{end}}"] = arguments.get("{{(index .Arguments 1).Name}}", "")
+        await server.request_context.session.send_resource_list_changed()
+        return [types.TextContent(type="text", text=f"Added {{.Name}}")]
+    {{end}}
+    raise ValueError(f"Unknown tool: {name}")
+{{end}}
+
+async def main():
+    async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
+        await server.run(
+            read_stream,
+            write_stream,
+            InitializationOptions(
+                server_name="{{.ServerName}}",
+                server_version="{{.ServerVersion}}",
+                capabilities=server.get_capabilities(
+                    notification_options=NotificationOptions(),
+                    experimental_capabilities={},
+                ),
+            ),
+        )
+
+if __name__ == "__main__":
+    asyncio.run(main())
