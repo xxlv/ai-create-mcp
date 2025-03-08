@@ -18,6 +18,7 @@ import (
 	_ "embed"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pelletier/go-toml"
 )
 
@@ -188,10 +189,6 @@ func getPackageDirectory(path string) (string, error) {
 	return filepath.Dir(matches[0]), nil
 }
 
-
-
-
-
 func copyTemplate(path, name, description, version string) error {
 	targetDir, err := getPackageDirectory(path)
 	if err != nil {
@@ -202,7 +199,6 @@ func copyTemplate(path, name, description, version string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load pyproject.toml: %v", err)
 	}
-
 	templateVars := TemplateData{
 		BinaryName:        pyproject.FirstBinary(),
 		ServerName:        name,
@@ -232,7 +228,7 @@ func copyTemplate(path, name, description, version string) error {
 			},
 
 			{
-				Name:        "煞笔",
+				Name:        "add-note-2",
 				Description: "Add a new note",
 				Arguments: []Argument{
 					{Name: "name", Description: "Note name", Required: true},
@@ -241,6 +237,10 @@ func copyTemplate(path, name, description, version string) error {
 			},
 		},
 	}
+	doc, err := openapi3.NewLoader().LoadFromFile("openapi.yml")
+
+	templateVars, _ = ConvertOAStoTemplateData(doc)
+	fmt.Printf("%+v", doc)
 
 	templates := []struct {
 		name      string
@@ -398,6 +398,8 @@ func openBrowser(url string) error {
 
 	return exec.Command(cmd, args...).Start()
 }
+
+// runInspector use mcp inspcector package
 func runInspector(projectPath, projectName string) error {
 	cmd := exec.Command("npx", "@modelcontextprotocol/inspector", "uv", "--directory", projectPath, "run", projectName)
 	cmd.Stderr = os.Stderr
@@ -443,9 +445,9 @@ func main() {
 	)
 	flag.StringVar(&path, "path", "", "Directory to create project in")
 	flag.StringVar(&name, "name", "", "Project name")
-	flag.StringVar(&version, "version", "", "Server version")
-	flag.BoolVar(&inspector, "inspector", true, "open inspector")
-	flag.StringVar(&description, "description", "", "Project description")
+	flag.StringVar(&version, "version", "0.1.0", "Server version")
+	flag.BoolVar(&inspector, "inspector", true, "Open inspector")
+	flag.StringVar(&description, "description", "Simple mcp", "Project description")
 	flag.BoolVar(&claudeApp, "claudeapp", true, "Enable/disable Claude.app integration")
 
 	flag.Parse()
@@ -495,14 +497,18 @@ func main() {
 	if path != "" {
 		projectPath = path
 	} else {
-		fmt.Printf("Project will be created at: %s\n", projectPath)
-		fmt.Print("Is this correct? [Y/n]: ")
-		response, _ := reader.ReadString('\n')
-		if strings.TrimSpace(strings.ToLower(response)) == "n" {
-			fmt.Print("Enter the correct path: ")
-			projectPath, _ = reader.ReadString('\n')
-			projectPath = strings.TrimSpace(projectPath)
-		}
+		// fmt.Printf("Project will be created at: %s\n", projectPath)
+		// fmt.Print("Is this correct? [Y/n]: ")
+		// response, _ := reader.ReadString('\n')
+		// if strings.TrimSpace(strings.ToLower(response)) == "n" {
+		// 	fmt.Print("Enter the correct path: ")
+		// 	projectPath, _ = reader.ReadString('\n')
+		// 	projectPath = strings.TrimSpace(projectPath)
+		// }
+
+		// for debug
+		// projectPath, _ = reader.ReadString('\n')
+		projectPath = strings.TrimSpace(projectPath)
 	}
 
 	projectPath = filepath.Clean(projectPath)

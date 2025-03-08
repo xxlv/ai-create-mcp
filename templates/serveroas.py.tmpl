@@ -107,12 +107,20 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
         if {{if .Required}}not {{.Name}}{{else}}False{{end}}:
             raise ValueError("Missing {{.Name}}")
         {{end}}
-        state["{{range .Arguments}}{{.Name}}{{end}}"] = arguments.get("{{(index .Arguments 1).Name}}", "")
+        {{if .Arguments}}
+        # Store each argument in the state dictionary
+        {{range .Arguments}}
+        state["{{.Name}}"] = arguments.get("{{.Name}}", "")
+        {{end}}
         await server.request_context.session.send_resource_list_changed()
-        return [types.TextContent(type="text", text=f"Added {{.Name}}")]
+        return [types.TextContent(type="text", text=f"Processed {{.Name}}")]
+        {{else}}
+        # No arguments to process, just return a success message
+        return [types.TextContent(type="text", text=f"Processed {{.Name}}")]
+        {{end}}
     {{end}}
     raise ValueError(f"Unknown tool: {name}")
-{{end}}
+    {{end}}
 
 async def main():
     async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):

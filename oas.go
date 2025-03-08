@@ -8,6 +8,9 @@ import (
 )
 
 func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
+	if doc == nil {
+		return TemplateData{}, fmt.Errorf("must provide oas doc")
+	}
 	data := TemplateData{
 		ServerName:    doc.Info.Title,
 		ServerVersion: doc.Info.Version,
@@ -56,7 +59,7 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 				resource := Resource{
 					Name:        fmt.Sprintf("Resource: %s", cleanPath),
 					Description: description,
-					URI:         fmt.Sprintf("note://internal/%s", cleanPath),
+					URI:         fmt.Sprintf("ai-create-mcp://internal/%s", cleanPath),
 					MimeType:    mimeType,
 				}
 				data.Resources = append(data.Resources, resource)
@@ -80,7 +83,7 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 								arg := Argument{
 									Name:        propName,
 									Description: prop.Value.Description,
-									Required:    contains(operation.RequestBody.Value.Required, propName),
+									Required:    contains(prop.Value.Required, propName),
 								}
 								arguments = append(arguments, arg)
 							}
