@@ -96,7 +96,7 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 						if content.Schema != nil && content.Schema.Value != nil {
 							for propName, prop := range content.Schema.Value.Properties {
 								arg := Argument{
-									Name:        propName,
+									Name:        safe(propName),
 									Description: prop.Value.Description,
 									Required:    contains(prop.Value.Required, propName),
 								}
@@ -119,6 +119,13 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 		}
 	}
 	return data, nil
+}
+
+func safe(name string) string {
+	name = strings.ReplaceAll(name, "\n", "")
+	name = strings.ReplaceAll(name, "[", "")
+	name = strings.ReplaceAll(name, "]", "")
+	return name
 }
 
 func contains(slice []string, item string) bool {

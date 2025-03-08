@@ -22,7 +22,7 @@ async def handle_list_resources() -> list[types.Resource]:
         types.Resource(
             uri=AnyUrl("{{.URI}}"),
             name="{{.Name}}",
-            description="{{.Description}}",
+            description="""{{.Description}}""",
             mimeType="{{.MimeType}}",
         ),
         {{end}}
@@ -43,12 +43,12 @@ async def handle_list_prompts() -> list[types.Prompt]:
         {{range .Prompts}}
         types.Prompt(
             name="{{.Name}}",
-            description="{{.Description}}",
+            description="""{{.Description}}""",
             arguments=[
                 {{range .Arguments}}
                 types.PromptArgument(
                     name="{{.Name}}",
-                    description="{{.Description}}",
+                    description="""{{.Description}}""",
                     required={{.Required}},
                 ),
                 {{end}}
@@ -65,7 +65,7 @@ async def handle_list_tools() -> list[types.Tool]:
         {{range .Tools}}
         types.Tool(
             name="{{.Name}}",
-            description="{{.Description}}",
+            description="""{{.Description}}""",
             inputSchema={
                 "type": "object",
                 "properties": {
