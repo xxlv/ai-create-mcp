@@ -283,6 +283,12 @@ func createProject(path, name, description, version, oasPath string, useClaude b
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to add mcp dependency: %v", err)
 	}
+	// TODO: managed ?
+	cmd = exec.Command("uv", "add", "aiohttp")
+	cmd.Dir = path
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to add aiohttp dependency: %v", err)
+	}
 
 	if err := copyTemplate(path, name, description, version, oasPath); err != nil {
 		return fmt.Errorf("failed to copy templates: %v", err)

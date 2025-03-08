@@ -2,6 +2,7 @@ package main
 
 type TemplateData struct {
 	BinaryName        string
+	Endpoint          string
 	ServerName        string
 	ServerVersion     string
 	Resources         []Resource
@@ -34,4 +35,6 @@ type Tool struct {
 	Name        string
 	Description string
 	Arguments   []Argument
+	Method      string
+	Path        string
 }

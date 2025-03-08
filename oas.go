@@ -7,6 +7,31 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
+// generateToolName generates a semantic tool name from HTTP method and path.
+// For example: "GET" and "/user/{username}" -> "get_user_by_username"
+// or "DELETE" and "store_order_{orderId}" -> "delete_store_order_by_orderId"
+func generateToolName(method, path string) string {
+	// Convert method to lowercase
+	method = strings.ToLower(method)
+
+	// Clean the path by removing leading slash
+	cleanPath := strings.TrimPrefix(path, "/")
+
+	// If path is empty (root path), return method only
+	if cleanPath == "" {
+		return method
+	}
+
+	// Replace "/" with "_", "{" with "_by", and "}" with ""
+	cleanPath = strings.ReplaceAll(cleanPath, "/", "_")
+	cleanPath = strings.ReplaceAll(cleanPath, "_{", "_by_")
+	cleanPath = strings.ReplaceAll(cleanPath, "{", "_by_")
+	cleanPath = strings.ReplaceAll(cleanPath, "}", "")
+
+	// Combine method and cleaned path
+	return method + "_" + cleanPath
+}
+
 func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 	if doc == nil {
 		return TemplateData{}, fmt.Errorf("must provide oas doc")
@@ -14,17 +39,15 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 	data := TemplateData{
 		ServerName:    doc.Info.Title,
 		ServerVersion: doc.Info.Version,
+		Endpoint:      doc.Servers[0].URL,
 	}
 
-	// Iterate over all paths and operations in the OAS document
 	for path, pathItem := range doc.Paths.Map() {
-		// Clean path for naming (replace slashes with underscores)
 		cleanPath := strings.TrimPrefix(path, "/")
 		cleanPath = strings.ReplaceAll(cleanPath, "/", "_")
 
-		// Handle each operation (GET, POST, etc.)
 		for method, operation := range pathItem.Operations() {
-			opName := strings.ToLower(method) + "_" + cleanPath
+			opName := generateToolName(method, cleanPath)
 			description := operation.Summary
 			if description == "" {
 				description = operation.Description
@@ -33,7 +56,6 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 				description = fmt.Sprintf("%s operation on %s", method, path)
 			}
 
-			// Collect arguments from parameters
 			var arguments []Argument
 			for _, param := range operation.Parameters {
 				arg := Argument{
@@ -44,10 +66,8 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 				arguments = append(arguments, arg)
 			}
 
-			// Handle GET operations (Resources and Prompts)
 			if method == "GET" {
-				// Add as a Resource
-				mimeType := "text/plain" // Default
+				mimeType := "text/plain"
 				if operation.Responses != nil {
 					if resp, ok := operation.Responses.Map()["200"]; ok && resp.Value != nil {
 						for contentType := range resp.Value.Content {
@@ -64,7 +84,6 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 				}
 				data.Resources = append(data.Resources, resource)
 
-				// Add as a Prompt
 				prompt := Prompt{
 					Name:        opName,
 					Description: description,
@@ -73,9 +92,7 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 				data.Prompts = append(data.Prompts, prompt)
 			}
 
-			// Handle POST/PUT/PATCH/DELETE operations (Tools)
-			if method == "POST" || method == "PUT" || method == "PATCH" || method == "DELETE" {
-				// Add request body as arguments (if present)
+			if method == "GET" || method == "POST" || method == "PUT" || method == "PATCH" || method == "DELETE" {
 				if operation.RequestBody != nil && operation.RequestBody.Value != nil {
 					for _, content := range operation.RequestBody.Value.Content {
 						if content.Schema != nil && content.Schema.Value != nil {
@@ -88,7 +105,7 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 								arguments = append(arguments, arg)
 							}
 						}
-						break // Use first content type
+						break
 					}
 				}
 
@@ -96,16 +113,16 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 					Name:        opName,
 					Description: description,
 					Arguments:   arguments,
+					Method:      method,
+					Path:        path,
 				}
 				data.Tools = append(data.Tools, tool)
 			}
 		}
 	}
-
 	return data, nil
 }
 
-// Helper function to check if a string is in a slice
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {

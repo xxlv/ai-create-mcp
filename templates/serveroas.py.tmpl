@@ -1,4 +1,8 @@
+# Generated code - DO NOT EDIT
 import asyncio
+import aiohttp
+import json
+from typing import List, Dict, Optional
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
@@ -9,7 +13,7 @@ import mcp.server.stdio
 state: dict[str, str] = {}
 
 server = Server("{{.ServerName}}")
-
+BASE_URL = "{{.Endpoint}}" 
 {{if .Resources}}
 @server.list_resources()
 async def handle_list_resources() -> list[types.Resource]:
@@ -26,7 +30,7 @@ async def handle_list_resources() -> list[types.Resource]:
 
 @server.read_resource()
 async def handle_read_resource(uri: AnyUrl) -> str:
-    if uri.scheme != "ai-create-mcp":
+    if uri.scheme != "note":
         raise ValueError(f"Unsupported URI scheme: {uri.scheme}")
     name = uri.path.lstrip("/")
     return state.get(name, "")
@@ -53,27 +57,6 @@ async def handle_list_prompts() -> list[types.Prompt]:
         {{end}}
     ]
 
-@server.get_prompt()
-async def handle_get_prompt(name: str, arguments: dict[str, str] | None) -> types.GetPromptResult:
-    if arguments is None:
-        arguments = {}
-    {{range .Prompts}}
-    if name == "{{.Name}}":
-        return types.GetPromptResult(
-            description="{{.Description}}",
-            messages=[
-                types.PromptMessage(
-                    role="user",
-                    content=types.TextContent(
-                        type="text",
-                        text=f"{{.Description}}:\n" + "\n".join(f"- {k}: {v}" for k, v in state.items())
-                    ),
-                )
-            ],
-        )
-    {{end}}
-    raise ValueError(f"Unknown prompt: {name}")
-{{end}}
 
 {{if .Tools}}
 @server.list_tools()
@@ -96,31 +79,72 @@ async def handle_list_tools() -> list[types.Tool]:
         {{end}}
     ]
 
+
 @server.call_tool()
-async def handle_call_tool(name: str, arguments: dict | None) -> list[types.TextContent]:
+async def handle_call_tool(name: str, arguments: Optional[Dict]) -> List[types.TextContent]:
     if not arguments:
         raise ValueError("Missing arguments")
-    {{range .Tools}}
-    if name == "{{.Name}}":
-        {{range .Arguments}}
-        {{.Name}} = arguments.get("{{.Name}}")
-        if {{if .Required}}not {{.Name}}{{else}}False{{end}}:
-            raise ValueError("Missing {{.Name}}")
+    async with aiohttp.ClientSession() as session:
+        {{range .Tools}}
+        if name == "{{.Name}}":
+            # Validate arguments
+            {{range .Arguments}}
+            {{.Name}} = arguments.get("{{.Name}}")
+            if {{if .Required}}not {{.Name}}{{else}}False{{end}}:
+                raise ValueError("Missing required argument: {{.Name}}")
+            {{end}}
+            # Prepare request parameters
+            params = {}
+            headers = {"Content-Type": "application/json"}
+            url = f"{BASE_URL}{{.Path}}"
+            method = "{{.Method}}".lower()
+            # Add query parameters (for GET requests)
+            {{range .Arguments}}
+            {{if .Required}}
+            params["{{.Name}}"] = {{.Name}}
+            {{end}}
+            {{end}}
+            # Prepare request body (for POST/PUT/PATCH)
+            body = {}
+            {{if eq .Method "POST" "PUT" "PATCH"}}
+            {{range .Arguments}}
+            body["{{.Name}}"] = {{.Name}}
+            {{end}}
+            {{end}}
+            try:
+                # Make HTTP request
+                if method == "get":
+                    async with session.get(url, params=params, headers=headers) as response:
+                        result = await response.text()
+                elif method == "post":
+                    async with session.post(url, json=body, headers=headers) as response:
+                        result = await response.text()
+                elif method == "put":
+                    async with session.put(url, json=body, headers=headers) as response:
+                        result = await response.text()
+                elif method == "patch":
+                    async with session.patch(url, json=body, headers=headers) as response:
+                        result = await response.text()
+                elif method == "delete":
+                    async with session.delete(url, params=params, headers=headers) as response:
+                        result = await response.text()
+                else:
+                    raise ValueError(f"Unsupported method: {method}")
+                
+                # Store arguments in state
+                {{range .Arguments}}
+                state["{{.Name}}"] = arguments.get("{{.Name}}", "")
+                {{end}}
+                await server.request_context.session.send_resource_list_changed()
+                
+                return [types.TextContent(type="text", text=result)]
+            except Exception as e:
+                raise ValueError(f"Request failed: {str(e)}")
         {{end}}
-        {{if .Arguments}}
-        # Store each argument in the state dictionary
-        {{range .Arguments}}
-        state["{{.Name}}"] = arguments.get("{{.Name}}", "")
-        {{end}}
-        await server.request_context.session.send_resource_list_changed()
-        return [types.TextContent(type="text", text=f"Processed {{.Name}}")]
-        {{else}}
-        # No arguments to process, just return a success message
-        return [types.TextContent(type="text", text=f"Processed {{.Name}}")]
-        {{end}}
+        raise ValueError(f"Unknown tool: {name}")
     {{end}}
-    raise ValueError(f"Unknown tool: {name}")
-    {{end}}
+{{end}}
+
 
 async def main():
     async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):

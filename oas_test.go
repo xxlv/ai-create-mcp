@@ -8,6 +8,78 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGenerateToolName(t *testing.T) {
+	tests := []struct {
+		name     string
+		method   string
+		path     string
+		expected string
+	}{
+		{
+			name:     "Simple DELETE with parameter",
+			method:   "DELETE",
+			path:     "store_order_{orderId}",
+			expected: "delete_store_order_by_orderId",
+		},
+		{
+			name:     "Simple GET with parameter",
+			method:   "GET",
+			path:     "/pet/{petId}/uploadImage",
+			expected: "get_pet_by_petId_uploadImage",
+		},
+		{
+			name:     "Simple GET with parameter",
+			method:   "GET",
+			path:     "/user/{username}",
+			expected: "get_user_by_username",
+		},
+		{
+			name:     "POST with multiple parameters",
+			method:   "POST",
+			path:     "/user/{username}/posts/{post_id}",
+			expected: "post_user_by_username_posts_by_post_id",
+		},
+		{
+			name:     "DELETE with single parameter",
+			method:   "DELETE",
+			path:     "/user/{username}",
+			expected: "delete_user_by_username",
+		},
+		{
+			name:     "GET without parameters",
+			method:   "GET",
+			path:     "/users",
+			expected: "get_users",
+		},
+		{
+			name:     "Simple path without parameters",
+			method:   "GET",
+			path:     "/status",
+			expected: "get_status",
+		},
+		{
+			name:     "Root path",
+			method:   "GET",
+			path:     "/",
+			expected: "get",
+		},
+		{
+			name:     "Mixed case method",
+			method:   "PoSt",
+			path:     "/user/{username}",
+			expected: "post_user_by_username",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := generateToolName(tt.method, tt.path)
+			if result != tt.expected {
+				t.Errorf("generateToolName(%q, %q) = %q, want %q", tt.method, tt.path, result, tt.expected)
+			}
+		})
+	}
+}
 func TestConvertOAStoTemplateData(t *testing.T) {
 	tests := []struct {
 		name    string
