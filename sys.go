@@ -3,33 +3,11 @@ package main
 import (
 	"fmt"
 	"net"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 )
 
-func removeDebugDir() error {
-	dir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get current directory: %v", err)
-	}
-
-	debugDir := filepath.Join(dir, "debug")
-
-	if _, err := os.Stat(debugDir); os.IsNotExist(err) {
-		return nil
-	}
-
-	// 删除目录及其所有内容
-	err = os.RemoveAll(debugDir)
-	if err != nil {
-		return fmt.Errorf("failed to remove debug directory: %v", err)
-	}
-
-	return nil
-}
 func closePort(port int) error {
 	switch runtime.GOOS {
 	case "windows":
@@ -91,7 +69,6 @@ func closePortMac(port int) {
 	}
 }
 
-// 检查端口是否被占用
 func isPortInUse(port int) bool {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {

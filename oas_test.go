@@ -80,6 +80,7 @@ func TestGenerateToolName(t *testing.T) {
 		})
 	}
 }
+
 func TestConvertOAStoTemplateData(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -88,32 +89,16 @@ func TestConvertOAStoTemplateData(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "nil document",
-			doc:     nil,
-			want:    TemplateData{},
-			wantErr: true,
-		},
-		{
-			name: "basic document with info",
-			doc: &openapi3.T{
-				Info: &openapi3.Info{
-					Title:   "Test API",
-					Version: "1.0.0",
-				},
-				Paths: openapi3.NewPaths(),
-			},
-			want: TemplateData{
-				ServerName:    "Test API",
-				ServerVersion: "1.0.0",
-			},
-			wantErr: false,
-		},
-		{
 			name: "document with POST operation",
 			doc: &openapi3.T{
 				Info: &openapi3.Info{
 					Title:   "Test API",
 					Version: "1.0.0",
+				},
+				Servers: []*openapi3.Server{
+					{
+						URL: "https://test.com",
+					},
 				},
 				Paths: func() *openapi3.Paths {
 					paths := openapi3.NewPaths()
@@ -148,6 +133,7 @@ func TestConvertOAStoTemplateData(t *testing.T) {
 			want: TemplateData{
 				ServerName:    "Test API",
 				ServerVersion: "1.0.0",
+				Endpoint:      "https://test.com",
 				Tools: []Tool{
 					{
 						Name:        "post_users",
@@ -156,11 +142,41 @@ func TestConvertOAStoTemplateData(t *testing.T) {
 							{
 								Name:        "name",
 								Description: "User name",
-								Required:    true,
+								Required:    false,
 							},
 						},
+						Method: "POST",
+						Path:   "/users",
 					},
 				},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "nil document",
+			doc:     nil,
+			want:    TemplateData{},
+			wantErr: true,
+		},
+		{
+			name: "basic document with info",
+			doc: &openapi3.T{
+				Info: &openapi3.Info{
+					Title:   "Test API",
+					Version: "1.0.0",
+				},
+				Paths: openapi3.NewPaths(),
+				Servers: []*openapi3.Server{
+					{
+						URL: "https://test.com",
+					},
+				},
+			},
+
+			want: TemplateData{
+				ServerName:    "Test API",
+				ServerVersion: "1.0.0",
+				Endpoint:      "https://test.com",
 			},
 			wantErr: false,
 		},

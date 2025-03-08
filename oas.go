@@ -11,37 +11,35 @@ import (
 // For example: "GET" and "/user/{username}" -> "get_user_by_username"
 // or "DELETE" and "store_order_{orderId}" -> "delete_store_order_by_orderId"
 func generateToolName(method, path string) string {
-	// Convert method to lowercase
 	method = strings.ToLower(method)
-
-	// Clean the path by removing leading slash
 	cleanPath := strings.TrimPrefix(path, "/")
-
-	// If path is empty (root path), return method only
 	if cleanPath == "" {
 		return method
 	}
-
-	// Replace "/" with "_", "{" with "_by", and "}" with ""
 	cleanPath = strings.ReplaceAll(cleanPath, "/", "_")
 	cleanPath = strings.ReplaceAll(cleanPath, "_{", "_by_")
 	cleanPath = strings.ReplaceAll(cleanPath, "{", "_by_")
 	cleanPath = strings.ReplaceAll(cleanPath, "}", "")
 
-	// Combine method and cleaned path
 	return method + "_" + cleanPath
 }
 
 func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
+	empty := TemplateData{}
 	if doc == nil {
-		return TemplateData{}, fmt.Errorf("must provide oas doc")
+		return empty, fmt.Errorf("must provide oas doc")
+	}
+	if doc.Servers == nil || len(doc.Servers) <= 0 {
+		return empty, fmt.Errorf("oas must contains server,please check your config file")
 	}
 	data := TemplateData{
 		ServerName:    doc.Info.Title,
 		ServerVersion: doc.Info.Version,
 		Endpoint:      doc.Servers[0].URL,
 	}
-
+	if len(doc.Servers) > 1 {
+		fmt.Printf("WARN: mutlple servers found in oas config file,current just pick the frist!\n")
+	}
 	for path, pathItem := range doc.Paths.Map() {
 		cleanPath := strings.TrimPrefix(path, "/")
 		cleanPath = strings.ReplaceAll(cleanPath, "/", "_")
