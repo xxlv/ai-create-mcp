@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -402,7 +401,6 @@ func tryOpenBrowser() {
 }
 
 func main() {
-	var oasPathMock = path.Join("testdata", "openapi.yml")
 	var (
 		path        string
 		name        string
@@ -414,7 +412,7 @@ func main() {
 	)
 	flag.StringVar(&path, "path", "", "Directory to create project in")
 	flag.StringVar(&name, "name", "", "Project name")
-	flag.StringVar(&oasPath, "oaspath", oasPathMock, "Oas path")
+	flag.StringVar(&oasPath, "oaspath", "", "Oas path")
 	flag.StringVar(&version, "version", "0.1.0", "Server version")
 	flag.BoolVar(&inspector, "inspector", true, "Open inspector")
 	flag.StringVar(&description, "description", "Simple mcp", "Project description")
