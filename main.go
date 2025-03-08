@@ -472,19 +472,17 @@ func main() {
 	if path != "" {
 		projectPath = path
 	} else {
-		// fmt.Printf("Project will be created at: %s\n", projectPath)
-		// fmt.Print("Is this correct? [Y/n]: ")
-		// response, _ := reader.ReadString('\n')
-		// if strings.TrimSpace(strings.ToLower(response)) == "n" {
-		// 	fmt.Print("Enter the correct path: ")
-		// 	projectPath, _ = reader.ReadString('\n')
-		// 	projectPath = strings.TrimSpace(projectPath)
-		// }
-
+		fmt.Printf("Project will be created at: %s\n", projectPath)
+		fmt.Print("Is this correct? [Y/n]: ")
+		response, _ := reader.ReadString('\n')
+		if strings.TrimSpace(strings.ToLower(response)) == "n" {
+			fmt.Print("Enter the correct path: ")
+			projectPath, _ = reader.ReadString('\n')
+			projectPath = strings.TrimSpace(projectPath)
+		}
 		// for debug
 		// projectPath, _ = reader.ReadString('\n')
-
-		projectPath = strings.TrimSpace(projectPath)
+		// projectPath = strings.TrimSpace(projectPath)
 	}
 
 	projectPath = filepath.Clean(projectPath)
