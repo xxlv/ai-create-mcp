@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -18,6 +19,7 @@ import (
 	_ "embed"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pelletier/go-toml"
 )
 
@@ -193,55 +195,11 @@ func copyTemplate(path, name, description, version, oasPath string) error {
 	if err != nil {
 		return err
 	}
-
-	pyproject, err := NewPyProject(filepath.Join(path, "pyproject.toml"))
+	doc, err := openapi3.NewLoader().LoadFromFile(oasPath)
+	templateVars, err := ConvertOAStoTemplateData(doc)
 	if err != nil {
-		return fmt.Errorf("failed to load pyproject.toml: %v", err)
+		return fmt.Errorf("failed to load oas file: %v", err)
 	}
-	templateVars := TemplateData{
-		BinaryName:        pyproject.FirstBinary(),
-		ServerName:        name,
-		ServerVersion:     "1.0.0",
-		ServerDescription: description,
-		ServerDirectory:   path,
-		Resources: []Resource{
-			{Name: "Note1", Description: "A simple note", URI: "note://internal/note1", MimeType: "text/plain"},
-		},
-		Prompts: []Prompt{
-			{
-				Name:        "summarize-notes",
-				Description: "Summarize all notes",
-				Arguments: []Argument{
-					{Name: "style", Description: "Summary style", Required: false},
-				},
-			},
-		},
-		Tools: []Tool{
-			{
-				Name:        "add-note",
-				Description: "Add a new note",
-				Arguments: []Argument{
-					{Name: "name", Description: "Note name", Required: true},
-					{Name: "content", Description: "Note content", Required: true},
-				},
-			},
-
-			{
-				Name:        "add-note-2",
-				Description: "Add a new note",
-				Arguments: []Argument{
-					{Name: "name", Description: "Note name", Required: true},
-					{Name: "content", Description: "Note content", Required: true},
-				},
-			},
-		},
-	}
-
-	// doc, err := openapi3.NewLoader().LoadFromFile(oasPath)
-	// templateVars, err := ConvertOAStoTemplateData(doc)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to load oas file: %v", err)
-	// }
 
 	templates := []struct {
 		name      string
@@ -402,7 +360,7 @@ func openBrowser(url string) error {
 
 // runInspector use mcp inspcector package
 func runInspector(projectPath, projectName string) error {
-	cmd := exec.Command("npx", "@modelcontextprotocol/inspector", "uv", "--directory", projectPath, "run", projectName)
+	cmd := exec.Command("npx", "@modelcontextprotocol/inspector", "uv", "--directory", fmt.Sprintf(`"%s"`, projectPath), "run", projectName)
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 
@@ -436,6 +394,7 @@ func tryOpenBrowser() {
 }
 
 func main() {
+	var oasPathMock = path.Join("testdata", "openapi.yml")
 	var (
 		path        string
 		name        string
@@ -447,7 +406,7 @@ func main() {
 	)
 	flag.StringVar(&path, "path", "", "Directory to create project in")
 	flag.StringVar(&name, "name", "", "Project name")
-	flag.StringVar(&oasPath, "oaspath", "", "Oas path")
+	flag.StringVar(&oasPath, "oaspath", oasPathMock, "Oas path")
 	flag.StringVar(&version, "version", "0.1.0", "Server version")
 	flag.BoolVar(&inspector, "inspector", true, "Open inspector")
 	flag.StringVar(&description, "description", "Simple mcp", "Project description")
@@ -513,8 +472,10 @@ func main() {
 		// 	projectPath, _ = reader.ReadString('\n')
 		// 	projectPath = strings.TrimSpace(projectPath)
 		// }
+
 		// for debug
 		// projectPath, _ = reader.ReadString('\n')
+
 		projectPath = strings.TrimSpace(projectPath)
 	}
 
@@ -537,4 +498,5 @@ func main() {
 		fmt.Println("✅ Inspector executed successfully")
 	}
 	os.Exit(0)
+
 }

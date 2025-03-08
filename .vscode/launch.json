@@ -6,7 +6,7 @@
       "request": "launch",
       "mode": "auto",
       "program": "${workspaceFolder}",
-      "args": ["-name", "mylocaltest"]
+      "args": ["-name", "debug"]
     }
   ]
 }
