@@ -196,11 +196,13 @@ func copyTemplate(path, name, description, version, oasPath string) error {
 		return err
 	}
 	doc, err := openapi3.NewLoader().LoadFromFile(oasPath)
-	templateVars, err := ConvertOAStoTemplateData(doc)
 	if err != nil {
 		return fmt.Errorf("failed to load oas file: %v", err)
 	}
-
+	templateVars, err := ConvertOAStoTemplateData(doc)
+	if err != nil {
+		return fmt.Errorf("failed to convert oas as templates vars: %v", err)
+	}
 	templates := []struct {
 		name      string
 		content   string
