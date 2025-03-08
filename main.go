@@ -18,7 +18,6 @@ import (
 	_ "embed"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pelletier/go-toml"
 )
 
@@ -189,7 +188,7 @@ func getPackageDirectory(path string) (string, error) {
 	return filepath.Dir(matches[0]), nil
 }
 
-func copyTemplate(path, name, description, version string) error {
+func copyTemplate(path, name, description, version, oasPath string) error {
 	targetDir, err := getPackageDirectory(path)
 	if err != nil {
 		return err
@@ -237,10 +236,12 @@ func copyTemplate(path, name, description, version string) error {
 			},
 		},
 	}
-	doc, err := openapi3.NewLoader().LoadFromFile("openapi.yml")
 
-	templateVars, _ = ConvertOAStoTemplateData(doc)
-	fmt.Printf("%+v", doc)
+	// doc, err := openapi3.NewLoader().LoadFromFile(oasPath)
+	// templateVars, err := ConvertOAStoTemplateData(doc)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to load oas file: %v", err)
+	// }
 
 	templates := []struct {
 		name      string
@@ -308,7 +309,7 @@ func checkPackageName(name string) bool {
 	return true
 }
 
-func createProject(path, name, description, version string, useClaude bool) error {
+func createProject(path, name, description, version, oasPath string, useClaude bool) error {
 	if err := os.MkdirAll(path, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %v", err)
 	}
@@ -325,7 +326,7 @@ func createProject(path, name, description, version string, useClaude bool) erro
 		return fmt.Errorf("failed to add mcp dependency: %v", err)
 	}
 
-	if err := copyTemplate(path, name, description, version); err != nil {
+	if err := copyTemplate(path, name, description, version, oasPath); err != nil {
 		return fmt.Errorf("failed to copy templates: %v", err)
 	}
 
@@ -438,6 +439,7 @@ func main() {
 	var (
 		path        string
 		name        string
+		oasPath     string
 		version     string
 		description string
 		claudeApp   bool
@@ -445,6 +447,7 @@ func main() {
 	)
 	flag.StringVar(&path, "path", "", "Directory to create project in")
 	flag.StringVar(&name, "name", "", "Project name")
+	flag.StringVar(&oasPath, "oaspath", "", "Oas path")
 	flag.StringVar(&version, "version", "0.1.0", "Server version")
 	flag.BoolVar(&inspector, "inspector", true, "Open inspector")
 	flag.StringVar(&description, "description", "Simple mcp", "Project description")
@@ -487,6 +490,11 @@ func main() {
 			version = "0.1.0"
 		}
 	}
+	if oasPath == "" {
+		fmt.Print("Oas path(required): ")
+		oasPath, _ = reader.ReadString('\n')
+		oasPath = strings.TrimSpace(oasPath)
+	}
 
 	if _, err := semver.NewVersion(version); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Error: Version must be a valid semantic version (e.g. 1.0.0): %v\n", err)
@@ -505,14 +513,13 @@ func main() {
 		// 	projectPath, _ = reader.ReadString('\n')
 		// 	projectPath = strings.TrimSpace(projectPath)
 		// }
-
 		// for debug
 		// projectPath, _ = reader.ReadString('\n')
 		projectPath = strings.TrimSpace(projectPath)
 	}
 
 	projectPath = filepath.Clean(projectPath)
-	if err := createProject(projectPath, name, description, version, claudeApp); err != nil {
+	if err := createProject(projectPath, name, description, version, oasPath, claudeApp); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Error: %v\n", err)
 		os.Exit(1)
 	}
