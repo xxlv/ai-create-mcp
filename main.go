@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -188,7 +189,12 @@ func getPackageDirectory(path string) (string, error) {
 	}
 	return filepath.Dir(matches[0]), nil
 }
-
+func capitalizeBool(b bool) string {
+	if b {
+		return "True"
+	}
+	return "False"
+}
 func copyTemplate(path, name, description, version, oasPath string) error {
 	targetDir, err := getPackageDirectory(path)
 	if err != nil {
@@ -225,7 +231,11 @@ func copyTemplate(path, name, description, version, oasPath string) error {
 	}
 
 	for _, t := range templates {
-		tmpl, err := template.New(t.name).Parse(t.content) // In practice, load from file or embed
+		tmpl := template.New(t.name).Funcs(template.FuncMap{
+			"capitalizeBool": capitalizeBool,
+		})
+
+		tmpl, err := tmpl.Parse(t.content) // In practice, load from file or embed
 		if err != nil {
 			return fmt.Errorf("failed to parse template %s: %v", t.name, err)
 		}
@@ -246,6 +256,7 @@ func copyTemplate(path, name, description, version, oasPath string) error {
 }
 
 func checkPackageName(name string) bool {
+	fmt.Fprintf(os.Stdout, " Checking project name %s\n", name)
 	if name == "" {
 		fmt.Fprintln(os.Stderr, "❌ Project name cannot be empty")
 		return false
@@ -400,6 +411,15 @@ func tryOpenBrowser() {
 	}
 }
 
+func generateRandomLowString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyz"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
 func main() {
 	var (
 		path        string
@@ -409,6 +429,7 @@ func main() {
 		description string
 		claudeApp   bool
 		inspector   bool
+		y           bool
 	)
 	flag.StringVar(&path, "path", "", "Directory to create project in")
 	flag.StringVar(&name, "name", "", "Project name")
@@ -417,6 +438,7 @@ func main() {
 	flag.BoolVar(&inspector, "inspector", true, "Open inspector")
 	flag.StringVar(&description, "description", "Simple mcp", "Project description")
 	flag.BoolVar(&claudeApp, "claudeapp", true, "Enable/disable Claude.app integration")
+	flag.BoolVar(&y, "autoyes", true, "Enable/disable auto yes")
 
 	flag.Parse()
 
@@ -434,6 +456,10 @@ func main() {
 		name = strings.TrimSpace(name)
 	}
 
+	if strings.Contains(name, "${random}") {
+		randomStr := generateRandomLowString(8)
+		name = strings.ReplaceAll(name, "${random}", randomStr)
+	}
 	if !checkPackageName(name) {
 		os.Exit(1)
 	}
@@ -471,16 +497,17 @@ func main() {
 		projectPath = path
 	} else {
 		fmt.Printf("Project will be created at: %s\n", projectPath)
-		fmt.Print("Is this correct? [Y/n]: ")
-		response, _ := reader.ReadString('\n')
-		if strings.TrimSpace(strings.ToLower(response)) == "n" {
-			fmt.Print("Enter the correct path: ")
-			projectPath, _ = reader.ReadString('\n')
+		if !y {
+			fmt.Print("Is this correct? [Y/n]: ")
+			response, _ := reader.ReadString('\n')
+			if strings.TrimSpace(strings.ToLower(response)) == "n" {
+				fmt.Print("Enter the correct path: ")
+				projectPath, _ = reader.ReadString('\n')
+				projectPath = strings.TrimSpace(projectPath)
+			}
+		} else {
 			projectPath = strings.TrimSpace(projectPath)
 		}
-		// for debug
-		// projectPath, _ = reader.ReadString('\n')
-		// projectPath = strings.TrimSpace(projectPath)
 	}
 
 	projectPath = filepath.Clean(projectPath)

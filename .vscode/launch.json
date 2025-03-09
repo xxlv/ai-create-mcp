@@ -6,7 +6,12 @@
       "request": "launch",
       "mode": "auto",
       "program": "${workspaceFolder}",
-      "args": ["-name", "debug"]
+      "args": [
+        "-name",
+        "debug${random}",
+        "-oaspath",
+        "D:\\Code\\ai-create-mcp\\localdoc\\shopify.yml"
+      ]
     }
   ]
 }

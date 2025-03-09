@@ -49,7 +49,7 @@ async def handle_list_prompts() -> list[types.Prompt]:
                 types.PromptArgument(
                     name="{{.Name}}",
                     description="""{{.Description}}""",
-                    required={{.Required}},
+                    required={{capitalizeBool .Required}},
                 ),
                 {{end}}
             ],
@@ -73,12 +73,15 @@ async def handle_list_tools() -> list[types.Tool]:
                     "{{.Name}}": {"type": "string"},
                     {{end}}
                 },
-                "required": [{{range .Arguments}}{{if .Required}}"{{.Name}}",{{end}}{{end}}],
+                "required": [
+                    {{range .Arguments}}
+                    {{if .Required}}"{{.Name}}",{{end}}
+                    {{end}}
+                ],
             },
         ),
         {{end}}
     ]
-
 
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: Optional[Dict]) -> List[types.TextContent]:

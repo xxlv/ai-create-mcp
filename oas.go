@@ -57,8 +57,8 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 			var arguments []Argument
 			for _, param := range operation.Parameters {
 				arg := Argument{
-					Name:        param.Value.Name,
-					Description: param.Value.Description,
+					Name:        safe(param.Value.Name),
+					Description: safeDesc(param.Value.Description),
 					Required:    param.Value.Required,
 				}
 				arguments = append(arguments, arg)
@@ -75,15 +75,15 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 					}
 				}
 				resource := Resource{
-					Name:        fmt.Sprintf("Resource: %s", cleanPath),
-					Description: description,
+					Name:        safe(fmt.Sprintf("Resource: %s", cleanPath)),
+					Description: safeDesc(description),
 					URI:         fmt.Sprintf("ai-create-mcp://internal/%s", cleanPath),
 					MimeType:    mimeType,
 				}
 				data.Resources = append(data.Resources, resource)
 
 				prompt := Prompt{
-					Name:        opName,
+					Name:        safe(opName),
 					Description: description,
 					Arguments:   arguments,
 				}
@@ -97,7 +97,7 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 							for propName, prop := range content.Schema.Value.Properties {
 								arg := Argument{
 									Name:        safe(propName),
-									Description: prop.Value.Description,
+									Description: safeDesc(prop.Value.Description),
 									Required:    contains(prop.Value.Required, propName),
 								}
 								arguments = append(arguments, arg)
@@ -108,8 +108,8 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 				}
 
 				tool := Tool{
-					Name:        opName,
-					Description: description,
+					Name:        safe(opName),
+					Description: safeDesc(description),
 					Arguments:   arguments,
 					Method:      method,
 					Path:        path,
@@ -125,6 +125,12 @@ func safe(name string) string {
 	name = strings.ReplaceAll(name, "\n", "")
 	name = strings.ReplaceAll(name, "[", "")
 	name = strings.ReplaceAll(name, "]", "")
+	name = strings.ReplaceAll(name, "\"", "")
+	name = strings.ReplaceAll(name, " ", "")
+	return name
+}
+func safeDesc(name string) string {
+	name = strings.ReplaceAll(name, "\"", "")
 	return name
 }
 
