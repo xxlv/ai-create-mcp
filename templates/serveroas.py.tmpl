@@ -8,12 +8,18 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from pydantic import AnyUrl
 import mcp.server.stdio
+import random
 
 # Server state
 state: dict[str, str] = {}
 
 server = Server("{{.ServerName}}")
-BASE_URL = "{{.Endpoint}}" 
+
+BASE_URLs = [
+{{- range $i, $url := .Endpoints -}}
+    "{{$url}}"{{if not $i}},{{end}}
+{{- end -}}
+]
 {{if .Resources}}
 @server.list_resources()
 async def handle_list_resources() -> list[types.Resource]:
@@ -99,7 +105,8 @@ async def handle_call_tool(name: str, arguments: Optional[Dict]) -> List[types.T
             # Prepare request parameters
             params = {}
             headers = {"Content-Type": "application/json"}
-            url = f"{BASE_URL}{{.Path}}"
+
+            url = f"{random.choice(BASE_URLs)}{{.Path}}"
             method = "{{.Method}}".lower()
             # Add query parameters (for GET requests)
             {{range .Arguments}}

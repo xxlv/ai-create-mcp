@@ -133,7 +133,7 @@ func TestConvertOAStoTemplateData(t *testing.T) {
 			want: TemplateData{
 				ServerName:    "Test API",
 				ServerVersion: "1.0.0",
-				Endpoint:      "https://test.com",
+				Endpoints:     []string{"https://test.com"},
 				Tools: []Tool{
 					{
 						Name:        "post_users",
@@ -176,7 +176,7 @@ func TestConvertOAStoTemplateData(t *testing.T) {
 			want: TemplateData{
 				ServerName:    "Test API",
 				ServerVersion: "1.0.0",
-				Endpoint:      "https://test.com",
+				Endpoints:     []string{"https://test.com"},
 			},
 			wantErr: false,
 		},

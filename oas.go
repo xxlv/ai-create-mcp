@@ -29,13 +29,18 @@ func ConvertOAStoTemplateData(doc *openapi3.T) (TemplateData, error) {
 	if doc == nil {
 		return empty, fmt.Errorf("must provide oas doc")
 	}
-	if doc.Servers == nil || len(doc.Servers) <= 0 {
+	if doc.Servers == nil {
 		return empty, fmt.Errorf("oas must contains server,please check your config file")
 	}
+	var endpoints []string
+	for _, server := range doc.Servers {
+		endpoints = append(endpoints, server.URL)
+	}
+
 	data := TemplateData{
 		ServerName:    doc.Info.Title,
 		ServerVersion: doc.Info.Version,
-		Endpoint:      doc.Servers[0].URL,
+		Endpoints:     endpoints, // multiple endpoints
 	}
 	if len(doc.Servers) > 1 {
 		fmt.Printf("WARN: mutlple servers found in oas config file,current just pick the frist!\n")

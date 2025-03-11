@@ -2,7 +2,7 @@ package main
 
 type TemplateData struct {
 	BinaryName        string
-	Endpoint          string
+	Endpoints         []string
 	ServerName        string
 	ServerVersion     string
 	Resources         []Resource
