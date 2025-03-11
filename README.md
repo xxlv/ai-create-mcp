@@ -1,4 +1,6 @@
-# MCP Generator
+# AI-Create-MCP (WIP)
+
+_This project is a work in progress and not yet complete._
 
 `ai-create-mcp` is a Go-based tool that converts OpenAPI Specification (OAS) files into a Model Context Protocol (MCP) program. It provides a simple and efficient way to generate MCP-compliant code or configurations from OAS files, with customizable options for project setup and integrations.
 
