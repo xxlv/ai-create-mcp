@@ -59,7 +59,11 @@ This command will:
 - Use the OAS file located at `./openapi.yaml`.
 - Set the server version to `1.0.0`.
 
-To disable the inspector and Claude.app integration, use:
+> `./testdata/openapi.yml` will be converted into the following tools🔧
+
+![inspector](./docs/inspector.png)
+
+> To disable the inspector and Claude.app integration, use:
 
 ```bash
 ai-create-mcp -path ./myproject -name my-mcp-app -oaspath ./openapi.yaml -inspector=false -claudeapp=false

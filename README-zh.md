@@ -59,6 +59,10 @@ ai-create-mcp -path ./myproject -name my-mcp-app -oaspath ./openapi.yaml -versio
 - 使用位于 `./openapi.yaml` 的 OAS 文件。
 - 将服务器版本设置为 `1.0.0`。
 
+> `./testdata/openapi.yml` 将转化成如下工具🔧
+
+![inspector](./docs/inspector.png)
+
 要禁用检查器和 Claude.app 集成，请使用：
 
 ```bash
