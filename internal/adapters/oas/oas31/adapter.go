@@ -15,7 +15,6 @@ func New(oasPath string) *OAS31Adapter {
 	}
 }
 func (a *OAS31Adapter) ToTemplateData() (*core.TemplateData, error) {
-
 	doc, err := openapi3.NewLoader().LoadFromFile(a.oasPath)
 	if err != nil {
 		return nil, err
