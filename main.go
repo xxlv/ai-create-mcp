@@ -19,8 +19,9 @@ import (
 	_ "embed"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pelletier/go-toml"
+	"github.com/xxlv/ai-create-mcp/internal/adapters/core"
+	"github.com/xxlv/ai-create-mcp/internal/adapters/oas/oas31"
 )
 
 //go:embed templates/__init__.py.tmpl
@@ -189,24 +190,25 @@ func getPackageDirectory(path string) (string, error) {
 	}
 	return filepath.Dir(matches[0]), nil
 }
+
 func capitalizeBool(b bool) string {
 	if b {
 		return "True"
 	}
 	return "False"
 }
-func copyTemplate(path, name, description, version, oasPath string) error {
+
+func copyTemplate(path, name, description, version string, adapter core.Adapter) error {
 	targetDir, err := getPackageDirectory(path)
 	if err != nil {
 		return err
 	}
-	doc, err := openapi3.NewLoader().LoadFromFile(oasPath)
-	if err != nil {
-		return fmt.Errorf("failed to load oas file: %v", err)
-	}
-	templateVars, err := ConvertOAStoTemplateData(doc)
+	templateVars, err := adapter.ToTemplateData()
 	if err != nil {
 		return fmt.Errorf("failed to convert oas as templates vars: %v", err)
+	}
+	if templateVars == nil {
+		return fmt.Errorf("failed to convert oas as templates, please check your oas path")
 	}
 	templates := []struct {
 		name      string
@@ -279,7 +281,7 @@ func checkPackageName(name string) bool {
 	return true
 }
 
-func createProject(path, name, description, version, oasPath string, useClaude bool) error {
+func createProject(path, name, description, version string, adapter core.Adapter, useClaude bool) error {
 	if err := os.MkdirAll(path, 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %v", err)
 	}
@@ -302,7 +304,7 @@ func createProject(path, name, description, version, oasPath string, useClaude b
 		return fmt.Errorf("failed to add aiohttp dependency: %v", err)
 	}
 
-	if err := copyTemplate(path, name, description, version, oasPath); err != nil {
+	if err := copyTemplate(path, name, description, version, adapter); err != nil {
 		return fmt.Errorf("failed to copy templates: %v", err)
 	}
 
@@ -481,11 +483,13 @@ func main() {
 			version = "0.1.0"
 		}
 	}
+	var adapter core.Adapter
 	if oasPath == "" {
 		fmt.Print("Oas path(required): ")
 		oasPath, _ = reader.ReadString('\n')
 		oasPath = strings.TrimSpace(oasPath)
 	}
+	adapter = oas31.New(oasPath)
 
 	if _, err := semver.NewVersion(version); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Error: Version must be a valid semantic version (e.g. 1.0.0): %v\n", err)
@@ -511,7 +515,7 @@ func main() {
 	}
 
 	projectPath = filepath.Clean(projectPath)
-	if err := createProject(projectPath, name, description, version, oasPath, claudeApp); err != nil {
+	if err := createProject(projectPath, name, description, version, adapter, claudeApp); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Error: %v\n", err)
 		os.Exit(1)
 	}
