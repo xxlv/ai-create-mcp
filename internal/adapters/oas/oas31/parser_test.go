@@ -1,4 +1,4 @@
-package main
+package oas31
 
 import (
 	"testing"
@@ -6,6 +6,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/xxlv/ai-create-mcp/internal/adapters/core"
 )
 
 func TestGenerateToolName(t *testing.T) {
@@ -85,7 +86,7 @@ func TestConvertOAStoTemplateData(t *testing.T) {
 	tests := []struct {
 		name    string
 		doc     *openapi3.T
-		want    TemplateData
+		want    core.TemplateData
 		wantErr bool
 	}{
 		{
@@ -130,15 +131,15 @@ func TestConvertOAStoTemplateData(t *testing.T) {
 					return paths
 				}(),
 			},
-			want: TemplateData{
+			want: core.TemplateData{
 				ServerName:    "Test API",
 				ServerVersion: "1.0.0",
 				Endpoints:     []string{"https://test.com"},
-				Tools: []Tool{
+				Tools: []core.Tool{
 					{
 						Name:        "post_users",
 						Description: "Create user",
-						Arguments: []Argument{
+						Arguments: []core.Argument{
 							{
 								Name:        "name",
 								Description: "User name",
@@ -155,7 +156,7 @@ func TestConvertOAStoTemplateData(t *testing.T) {
 		{
 			name:    "nil document",
 			doc:     nil,
-			want:    TemplateData{},
+			want:    core.TemplateData{},
 			wantErr: true,
 		},
 		{
@@ -173,7 +174,7 @@ func TestConvertOAStoTemplateData(t *testing.T) {
 				},
 			},
 
-			want: TemplateData{
+			want: core.TemplateData{
 				ServerName:    "Test API",
 				ServerVersion: "1.0.0",
 				Endpoints:     []string{"https://test.com"},
@@ -184,7 +185,7 @@ func TestConvertOAStoTemplateData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ConvertOAStoTemplateData(tt.doc)
+			got, err := convert(tt.doc)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -197,41 +198,6 @@ func TestConvertOAStoTemplateData(t *testing.T) {
 			assert.ElementsMatch(t, tt.want.Resources, got.Resources)
 			assert.ElementsMatch(t, tt.want.Prompts, got.Prompts)
 			assert.ElementsMatch(t, tt.want.Tools, got.Tools)
-		})
-	}
-}
-
-func TestContains(t *testing.T) {
-	tests := []struct {
-		name  string
-		slice []string
-		item  string
-		want  bool
-	}{
-		{
-			name:  "item exists",
-			slice: []string{"a", "b", "c"},
-			item:  "b",
-			want:  true,
-		},
-		{
-			name:  "item doesn't exist",
-			slice: []string{"a", "b", "c"},
-			item:  "d",
-			want:  false,
-		},
-		{
-			name:  "empty slice",
-			slice: []string{},
-			item:  "a",
-			want:  false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := contains(tt.slice, tt.item)
-			assert.Equal(t, tt.want, got)
 		})
 	}
 }
