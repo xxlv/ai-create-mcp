@@ -16,6 +16,7 @@ state: dict[str, str] = {}
 
 server = Server("{{.ServerName}}")
 TOKEN=""
+BASE_URL_ON_MISS=""
 BASE_URLs = [
 {{- range $i, $url := .Endpoints -}}
     "{{$url}}"{{if not $i}},{{end}}
@@ -162,10 +163,16 @@ async def handle_call_tool(name: str, arguments: Optional[Dict]) -> List[types.T
 async def main():
     parser = argparse.ArgumentParser(description='use token for OAS standard api.')
     parser.add_argument('--token', type=str, help='Authentication token',default="")
-
+    has_base_url={{capitalizeBool .MissBaseURL}}
+    if has_base_url:
+        parser.add_argument('--baseurl', type=str, help='Base url')
     args = parser.parse_args()
     global TOKEN 
     TOKEN = args.token
+    if has_base_url:
+        global BASE_URL_ON_MISS
+        BASE_URL_ON_MISS=args.baseurl 
+
 
     async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
         await server.run(

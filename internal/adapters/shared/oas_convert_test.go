@@ -1,10 +1,11 @@
-package oas31
+package shared
 
 import (
 	"testing"
 
-	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/stretchr/testify/require"
 	"github.com/xxlv/ai-create-mcp/internal/adapters/core"
 )
@@ -185,7 +186,7 @@ func TestConvertOAStoTemplateData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := convert(tt.doc)
+			got, err := Convert(tt.doc)
 
 			if tt.wantErr {
 				require.Error(t, err)

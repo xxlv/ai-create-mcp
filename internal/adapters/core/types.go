@@ -1,6 +1,7 @@
 package core
 
 type TemplateData struct {
+	MissBaseURL       bool // when openapi miss server set True
 	BinaryName        string
 	Endpoints         []string
 	ServerName        string

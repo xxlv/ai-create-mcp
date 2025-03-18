@@ -22,6 +22,7 @@ import (
 	"github.com/pelletier/go-toml"
 	"github.com/xxlv/ai-create-mcp/internal/adapters/core"
 	"github.com/xxlv/ai-create-mcp/internal/adapters/oas/oas31"
+	"github.com/xxlv/ai-create-mcp/internal/adapters/postman"
 )
 
 //go:embed templates/__init__.py.tmpl
@@ -424,18 +425,23 @@ func generateRandomLowString(length int) string {
 
 func main() {
 	var (
-		path        string
-		name        string
-		oasPath     string
-		version     string
-		description string
-		claudeApp   bool
-		inspector   bool
-		y           bool
+		path              string
+		name              string
+		oasPath           string
+		postmanCollection string
+		postmanApiToken   string
+		version           string
+		description       string
+		claudeApp         bool
+		inspector         bool
+		y                 bool
 	)
+
 	flag.StringVar(&path, "path", "", "Directory to create project in")
 	flag.StringVar(&name, "name", "", "Project name")
-	flag.StringVar(&oasPath, "oaspath", "", "Oas path")
+	flag.StringVar(&oasPath, "oaspath", "", "Oas path,if set ignore postman's config")
+	flag.StringVar(&postmanCollection, "postman_collection", "", "postman collection id")
+	flag.StringVar(&postmanApiToken, "postman_token", "", "postman api token")
 	flag.StringVar(&version, "version", "0.1.0", "Server version")
 	flag.BoolVar(&inspector, "inspector", true, "Open inspector")
 	flag.StringVar(&description, "description", "Simple mcp", "Project description")
@@ -484,12 +490,21 @@ func main() {
 		}
 	}
 	var adapter core.Adapter
-	if oasPath == "" {
-		fmt.Print("Oas path(required): ")
-		oasPath, _ = reader.ReadString('\n')
-		oasPath = strings.TrimSpace(oasPath)
+
+	if oasPath != "" {
+		adapter = oas31.New(oasPath)
+	} else if postmanCollection != "" {
+		if postmanApiToken == "" {
+			fmt.Fprintln(os.Stderr, "❌ Error: Please use `-postman_token` set api key, follow this doc `https://learning.postman.com/docs/developer/postman-api/authentication/`")
+			os.Exit(1)
+		}
+		adapter = postman.New(postmanCollection, postmanApiToken)
 	}
-	adapter = oas31.New(oasPath)
+
+	if adapter == nil {
+		fmt.Fprintln(os.Stderr, "❌ Error: Please use `oaspath` or `postman_collection`")
+		os.Exit(1)
+	}
 
 	if _, err := semver.NewVersion(version); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Error: Version must be a valid semantic version (e.g. 1.0.0): %v\n", err)
