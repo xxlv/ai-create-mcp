@@ -42,12 +42,11 @@ func (a *PostmanAdapter) ToTemplateData() (*core.TemplateData, error) {
 		return nil, fmt.Errorf("failed to fetch collection: %s", resp.Status)
 	}
 
-	var collection map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&collection); err != nil {
+	var collection *CollectionResponse = &CollectionResponse{}
+	if err := json.NewDecoder(resp.Body).Decode(collection); err != nil {
 		return nil, err
 	}
 	return convert(collection)
-
 }
 
 func (a *PostmanAdapter) GetSourceType() string {

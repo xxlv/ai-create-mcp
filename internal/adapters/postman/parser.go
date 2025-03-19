@@ -1,7 +1,382 @@
 package postman
 
-import "github.com/xxlv/ai-create-mcp/internal/adapters/core"
+import (
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
 
-func convert(postmanCollection map[string]any) (*core.TemplateData, error) {
-	panic("TODO: current does not support this mod.")
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/xxlv/ai-create-mcp/internal/adapters/core"
+	"github.com/xxlv/ai-create-mcp/internal/adapters/shared"
+)
+
+func convert(postmanCollection *CollectionResponse) (*core.TemplateData, error) {
+	if postmanCollection == nil {
+		return nil, fmt.Errorf("no postman collection found")
+	}
+	oas := convertToOpenAPI(&postmanCollection.Collection)
+	if oas == nil {
+		return nil, fmt.Errorf("postman collection does not convert to oas3.")
+	}
+	return shared.Convert(oas)
+}
+
+func convertToOpenAPI(collection *Collection) *openapi3.T {
+	if collection == nil {
+		return nil
+	}
+	// Initialize OpenAPI structure
+	comp := openapi3.NewComponents()
+	oas := &openapi3.T{
+		OpenAPI: "3.0.0",
+		Info: &openapi3.Info{
+			Title:       collection.Info.Name,
+			Description: collection.Info.Description,
+			Version:     "1.0.0",
+		},
+		Paths:      &openapi3.Paths{},
+		Components: &comp,
+	}
+
+	// Process all items (including nested ones)
+	processItems(collection.Item, "", oas)
+
+	return oas
+}
+
+// processItems processes all items in the collection
+func processItems(items []Item, parentPath string, oas *openapi3.T) {
+	for _, item := range items {
+		// Check if this is a folder (has nested items)
+		if len(item.Item) > 0 {
+			// Create a tag for this folder
+			tag := &openapi3.Tag{
+				Name:        item.Name,
+				Description: "Operations in " + item.Name,
+			}
+			oas.Tags = append(oas.Tags, tag)
+
+			// Process nested items
+			newParentPath := parentPath
+			if parentPath != "" {
+				newParentPath += "." + item.Name
+			} else {
+				newParentPath = item.Name
+			}
+			processItems(item.Item, newParentPath, oas)
+		} else if item.Request != nil {
+			// This is a request item
+			processRequest(item, parentPath, oas)
+		}
+	}
+}
+
+// processRequest converts a Postman request to an OpenAPI path
+func processRequest(item Item, folderTag string, oas *openapi3.T) {
+	req := item.Request
+
+	// Parse URL
+	parsedURL, err := url.Parse(req.URL.Raw)
+	if err != nil {
+		// Handle error or skip this request
+		return
+	}
+
+	// Extract path from URL
+	pathTemplate := parsedURL.Path
+	// Replace path parameters in the format /:paramName/ with OpenAPI format /{paramName}/
+	pathTemplate = convertPathParams(pathTemplate)
+
+	// Create operation
+	operation := &openapi3.Operation{
+		Summary:     item.Name,
+		Description: item.Name,
+		OperationID: sanitizeOperationID(item.Name),
+		Responses:   openapi3.NewResponses(),
+	}
+
+	// Add folder tag if present
+	if folderTag != "" {
+		operation.Tags = []string{strings.Split(folderTag, ".")[0]}
+	}
+
+	// Process request headers
+	processRequestHeaders(req, operation)
+
+	// Process request body
+	processRequestBody(req, operation)
+
+	// Process query parameters
+	processQueryParams(req, operation)
+
+	// Process path parameters
+	processPathParams(pathTemplate, operation)
+
+	// Process responses
+	processResponses(item.Response, operation)
+
+	// Create path if it doesn't exist
+	// Check if the path exists in the map
+	if oas.Paths.Find(pathTemplate) == nil {
+		oas.Paths.Set(pathTemplate, &openapi3.PathItem{})
+	}
+	// Add operation to appropriate HTTP method
+	pathItem := oas.Paths.Find(pathTemplate)
+
+	switch strings.ToUpper(req.Method) {
+	case "GET":
+		pathItem.Get = operation
+	case "POST":
+		pathItem.Post = operation
+	case "PUT":
+		pathItem.Put = operation
+	case "DELETE":
+		pathItem.Delete = operation
+	case "PATCH":
+		pathItem.Patch = operation
+	case "HEAD":
+		pathItem.Head = operation
+	case "OPTIONS":
+		pathItem.Options = operation
+	case "TRACE":
+		pathItem.Trace = operation
+	}
+}
+
+// processRequestHeaders converts Postman headers to OpenAPI parameters
+func processRequestHeaders(req *Request, operation *openapi3.Operation) {
+	for _, header := range req.Header {
+		// Skip content-type header as it's handled separately
+		if strings.ToLower(header.Key) == "content-type" {
+			continue
+		}
+
+		param := &openapi3.Parameter{
+			Name:        header.Key,
+			In:          "header",
+			Description: "Header parameter " + header.Key,
+			Required:    false, // Set to true if needed
+			Schema: &openapi3.SchemaRef{
+				Value: &openapi3.Schema{
+					Type:    &openapi3.Types{"string"},
+					Example: header.Value,
+				},
+			},
+		}
+
+		operation.Parameters = append(operation.Parameters, &openapi3.ParameterRef{Value: param})
+	}
+}
+
+// processRequestBody converts Postman request body to OpenAPI request body
+func processRequestBody(req *Request, operation *openapi3.Operation) {
+	if req.Body == nil || req.Body.Mode != "raw" || req.Body.Raw == "" {
+		return
+	}
+
+	contentType := "text/plain"
+
+	// Look for Content-Type in headers
+	for _, header := range req.Header {
+		if strings.ToLower(header.Key) == "content-type" {
+			contentType = header.Value
+			break
+		}
+	}
+
+	// Or check body options for JSON
+	if req.Body.Options != nil && req.Body.Options.Raw != nil {
+		if req.Body.Options.Raw.Language == "json" {
+			contentType = "application/json"
+		}
+	}
+
+	// Create schema based on content type
+	schema := &openapi3.Schema{
+		Type: &openapi3.Types{"string"},
+	}
+
+	// For JSON, try to parse the structure
+	if strings.Contains(contentType, "json") {
+		var jsonData interface{}
+		if err := json.Unmarshal([]byte(req.Body.Raw), &jsonData); err == nil {
+			schema = inferSchemaFromJSON(jsonData)
+		}
+	}
+
+	// Create request body
+	operation.RequestBody = &openapi3.RequestBodyRef{
+		Value: &openapi3.RequestBody{
+			Required: true,
+			Content:  openapi3.NewContent(),
+		},
+	}
+
+	operation.RequestBody.Value.Content[contentType] = &openapi3.MediaType{
+		Schema: &openapi3.SchemaRef{
+			Value: schema,
+		},
+		Example: req.Body.Raw,
+	}
+}
+
+// inferSchemaFromJSON attempts to create an OpenAPI schema from a JSON object
+func inferSchemaFromJSON(data interface{}) *openapi3.Schema {
+	switch v := data.(type) {
+	case map[string]interface{}:
+		schema := &openapi3.Schema{
+			Type:       &openapi3.Types{"object"},
+			Properties: make(map[string]*openapi3.SchemaRef),
+		}
+		for key, val := range v {
+			schema.Properties[key] = &openapi3.SchemaRef{
+				Value: inferSchemaFromJSON(val),
+			}
+		}
+		return schema
+	case []interface{}:
+		if len(v) > 0 {
+			return &openapi3.Schema{
+				Type:  &openapi3.Types{"array"},
+				Items: &openapi3.SchemaRef{Value: inferSchemaFromJSON(v[0])},
+			}
+		}
+		return &openapi3.Schema{Type: &openapi3.Types{"array"}}
+	case string:
+		return &openapi3.Schema{Type: &openapi3.Types{"string"}}
+	case float64:
+		if v == float64(int64(v)) {
+			return &openapi3.Schema{Type: &openapi3.Types{"integer"}}
+		}
+		return &openapi3.Schema{Type: &openapi3.Types{"number"}}
+	case bool:
+		return &openapi3.Schema{Type: &openapi3.Types{"boolean"}}
+	case nil:
+		return &openapi3.Schema{Type: &openapi3.Types{"null"}}
+	default:
+		return &openapi3.Schema{Type: &openapi3.Types{"string"}}
+	}
+}
+
+// processQueryParams converts Postman query parameters to OpenAPI parameters
+func processQueryParams(req *Request, operation *openapi3.Operation) {
+	for _, query := range req.URL.Query {
+		param := &openapi3.Parameter{
+			Name:        query.Key,
+			In:          "query",
+			Description: "Query parameter " + query.Key,
+			Required:    false,
+			Schema: &openapi3.SchemaRef{
+				Value: &openapi3.Schema{
+					Type:    &openapi3.Types{"string"},
+					Example: query.Value,
+				},
+			},
+		}
+
+		operation.Parameters = append(operation.Parameters, &openapi3.ParameterRef{Value: param})
+	}
+}
+
+// convertPathParams converts Postman path format to OpenAPI format
+func convertPathParams(pathTemplate string) string {
+	// Replace :paramName with {paramName}
+	segments := strings.Split(pathTemplate, "/")
+	for i, segment := range segments {
+		if strings.HasPrefix(segment, ":") {
+			segments[i] = "{" + segment[1:] + "}"
+		}
+	}
+	return strings.Join(segments, "/")
+}
+
+// processPathParams extracts path parameters from path template
+func processPathParams(pathTemplate string, operation *openapi3.Operation) {
+	// Extract path parameters from format like /users/{id}/profile
+	pathParamRegex := strings.NewReplacer("{", "", "}", "")
+	segments := strings.Split(pathTemplate, "/")
+
+	for _, segment := range segments {
+		if strings.HasPrefix(segment, "{") && strings.HasSuffix(segment, "}") {
+			paramName := pathParamRegex.Replace(segment)
+			param := &openapi3.Parameter{
+				Name:        paramName,
+				In:          "path",
+				Description: "Path parameter " + paramName,
+				Required:    true,
+				Schema: &openapi3.SchemaRef{
+					Value: &openapi3.Schema{
+						Type: &openapi3.Types{"string"},
+					},
+				},
+			}
+
+			operation.Parameters = append(operation.Parameters, &openapi3.ParameterRef{Value: param})
+		}
+	}
+}
+
+// processResponses converts Postman responses to OpenAPI responses
+func processResponses(responses []Response, operation *openapi3.Operation) {
+	for _, resp := range responses {
+		statusCode := strconv.Itoa(resp.Code)
+		response := &openapi3.Response{
+			Description: &resp.Name,
+			Content:     openapi3.NewContent(),
+		}
+
+		// Set content type if found in headers
+		contentType := "text/plain"
+		for _, header := range resp.Header {
+			if strings.ToLower(header.Key) == "content-type" {
+				contentType = header.Value
+				break
+			}
+		}
+
+		// Create content if body exists
+		if resp.Body != "" {
+			// For JSON, try to parse the structure
+			schema := &openapi3.Schema{Type: &openapi3.Types{"string"}}
+			if strings.Contains(contentType, "json") {
+				var jsonData interface{}
+				if err := json.Unmarshal([]byte(resp.Body), &jsonData); err == nil {
+					schema = inferSchemaFromJSON(jsonData)
+				}
+			}
+
+			response.Content[contentType] = &openapi3.MediaType{
+				Schema: &openapi3.SchemaRef{
+					Value: schema,
+				},
+				Example: resp.Body,
+			}
+		}
+		operation.Responses.Set(statusCode, &openapi3.ResponseRef{Value: response})
+	}
+}
+
+// sanitizeOperationID creates a valid operationID from the name
+func sanitizeOperationID(name string) string {
+	// Replace special characters with underscores, keeping only alphanumeric and underscores
+	sanitized := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return r
+		}
+		return '_'
+	}, name)
+
+	// Split by underscores and filter out empty segments
+	words := strings.Split(sanitized, "_")
+	var filteredWords []string
+	for _, word := range words {
+		if word != "" {
+			filteredWords = append(filteredWords, word)
+		}
+	}
+
+	// Join with underscores (no camelCase conversion)
+	return strings.Join(filteredWords, "_")
 }
