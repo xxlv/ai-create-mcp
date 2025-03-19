@@ -19,7 +19,7 @@ TOKEN=""
 BASE_URL_ON_MISS=""
 BASE_URLs = [
 {{- range $i, $url := .Endpoints -}}
-    "{{$url}}"{{if not $i}},{{end}}
+    "{{$url}}"{{if ne $i 0}},{{end}}
 {{- end -}}
 ]
 {{if .Resources}}

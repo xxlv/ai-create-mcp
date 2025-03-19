@@ -416,11 +416,12 @@ func TestProcessQueryParams(t *testing.T) {
 
 func TestProcessPathParams(t *testing.T) {
 	pathTemplate := "/users/{id}/posts/{postId}"
+	req := &Request{} // Create a dummy Request object as required
 	operation := &openapi3.Operation{
 		Parameters: []*openapi3.ParameterRef{},
 	}
 
-	processPathParams(pathTemplate, operation)
+	processPathParams(pathTemplate, req, operation)
 
 	assert.Equal(t, 2, len(operation.Parameters))
 	assert.Equal(t, "id", operation.Parameters[0].Value.Name)
