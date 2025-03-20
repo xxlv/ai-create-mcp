@@ -9,6 +9,7 @@ from pydantic import AnyUrl
 import mcp.server.stdio
 import random
 import argparse
+import re
 
 # Server state
 state: dict[str, str] = {}
@@ -105,8 +106,8 @@ async def handle_call_tool(name: str, arguments: Optional[Dict]) -> List[types.T
         if name == "{{.Name}}":
             # Validate arguments
             {{range .Arguments}}
-            {{.Name}} = arguments.get("{{.Name}}")
-            if {{if .Required}}not {{.Name}}{{else}}False{{end}}:
+            _{{.Name}} = arguments.get("{{.Name}}")
+            if {{if .Required}}not _{{.Name}}{{else}}False{{end}}:
                 raise ValueError("Missing required argument: {{.Name}}")
             {{end}}
             # Prepare request parameters
@@ -119,7 +120,7 @@ async def handle_call_tool(name: str, arguments: Optional[Dict]) -> List[types.T
             # Add query parameters (for GET requests)
             {{range .Arguments}}
             {{if .Required}}
-            params["{{.Name}}"] = {{.Name}}
+            params["{{.Name}}"] = _{{.Name}}
             {{end}}
             {{end}}
             
@@ -130,7 +131,7 @@ async def handle_call_tool(name: str, arguments: Optional[Dict]) -> List[types.T
             body["{{.Name}}"] = """{{.Name}}"""
             {{end}}
             {{end}}
-            
+            url, params = eat(url, params)
             try:
                 # Make HTTP request
                 if method == "get":
@@ -190,6 +191,18 @@ async def main():
                 ),
             ),
         )
+
+def eat(url, params):
+    updated_params = params.copy()
+    variables = re.findall(r'\{([^}]+)\}', url)
+    
+    for var in variables:
+        if var in updated_params:
+            url = url.replace('{' + var + '}', str(updated_params[var]))
+            del updated_params[var]
+    
+    return url, updated_params
+
 
 if __name__ == "__main__":
     asyncio.run(main())
