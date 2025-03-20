@@ -130,6 +130,7 @@ func Convert(doc *openapi3.T) (*core.TemplateData, error) {
 }
 
 func safe(name string) string {
+	name = strings.ReplaceAll(name, "-", "_")
 	name = strings.ReplaceAll(name, "\n", "")
 	name = strings.ReplaceAll(name, "[", "")
 	name = strings.ReplaceAll(name, "]", "")
