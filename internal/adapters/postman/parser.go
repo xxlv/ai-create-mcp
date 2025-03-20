@@ -71,7 +71,6 @@ func processItems(items []Item, baseURL string, endpoints *[]string, resources *
 
 		// Add endpoint
 		endpoint := item.Request.URL.Raw
-		*endpoints = append(*endpoints, endpoint)
 
 		// If it has a body and it's a GET request, it might be a resource
 		if item.Request.Body != nil && item.Request.Method == "GET" {
@@ -142,6 +141,7 @@ func extractArguments(request *Request) []core.Argument {
 func extractArgumentsFromJSONBody(jsonBody string) []core.Argument {
 	arguments := make([]core.Argument, 0)
 
+	// TODO: Implement JSON parsing to extract field names
 	// In a real implementation, you would parse the JSON and extract field names
 	// Here's a simplified placeholder approach
 	// Note: Actual implementation would require proper JSON parsing

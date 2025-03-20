@@ -492,6 +492,7 @@ func main() {
 	var adapter core.Adapter
 
 	if oasPath != "" {
+		
 		adapter = oas31.New(oasPath)
 	} else if postmanCollection != "" {
 		if postmanApiToken == "" {

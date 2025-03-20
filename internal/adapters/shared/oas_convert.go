@@ -136,6 +136,7 @@ func safe(name string) string {
 	name = strings.ReplaceAll(name, "]", "")
 	name = strings.ReplaceAll(name, "\"", "")
 	name = strings.ReplaceAll(name, " ", "")
+	name = "_" + name // // protect for python keyword
 	return name
 }
 func safeDesc(name string) string {
