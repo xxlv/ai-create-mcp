@@ -1,364 +1,183 @@
 package postman
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
-	"net/url"
-	"strconv"
+	urlPkg "net/url"
+	"regexp"
 	"strings"
 
-	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/xxlv/ai-create-mcp/internal/adapters/core"
-	"github.com/xxlv/ai-create-mcp/internal/adapters/shared"
 )
 
 func convert(postmanCollection *CollectionResponse) (*core.TemplateData, error) {
 	if postmanCollection == nil {
 		return nil, fmt.Errorf("no postman collection found")
 	}
-	oas := convertToOpenAPI(&postmanCollection.Collection)
-	if oas == nil {
-		return nil, fmt.Errorf("postman collection does not convert to oas3")
-	}
-	return shared.Convert(oas)
+	vars := convertPostmanToTemplateData(*postmanCollection)
+	return &vars, nil
 }
 
-func convertToOpenAPI(collection *Collection) *openapi3.T {
-	if collection == nil {
-		return nil
-	}
-	comp := openapi3.NewComponents()
-	oas := &openapi3.T{
-		OpenAPI: "3.0.0",
-		Info: &openapi3.Info{
-			Title:       collection.Info.Name,
-			Description: collection.Info.Description,
-			Version:     "1.0.0",
-		},
-		Paths:      &openapi3.Paths{},
-		Components: &comp,
-		Servers:    openapi3.Servers{},
+func convertPostmanToTemplateData(collection CollectionResponse) core.TemplateData {
+	// Initialize core.TemplateData structure
+	templateData := core.TemplateData{
+		MissBaseURL:       true, // Default to true, we'll set it to false if we find server info
+		BinaryName:        collection.Collection.Info.Name,
+		ServerName:        collection.Collection.Info.Name,
+		ServerVersion:     "1.0.0", // Default version
+		ServerDescription: collection.Collection.Info.Description,
+		ServerDirectory:   convertToValidDirectoryName(collection.Collection.Info.Name),
 	}
 
-	processItems(collection.Item, "", oas)
-	return oas
+	// Extract endpoints, resources, and tools from Postman items
+	endpoints := make([]string, 0)
+	resources := make([]core.Resource, 0)
+	tools := make([]core.Tool, 0)
+
+	// Process collection variables for server URL
+	baseURL := ""
+	for _, variable := range collection.Collection.Variable {
+		if variable.Key == "baseUrl" || variable.Key == "base_url" || variable.Key == "host" {
+			baseURL = variable.Value
+			templateData.MissBaseURL = false
+			break
+		}
+	}
+
+	// Process all items recursively
+	processItems(collection.Collection.Item, baseURL, &endpoints, &resources, &tools)
+
+	// Assign the processed data to core.TemplateData
+	templateData.Endpoints = endpoints
+	templateData.Resources = resources
+	templateData.Tools = tools
+	templateData.Prompts = []core.Prompt{} // Postman doesn't have an equivalent for Prompts
+
+	return templateData
 }
 
-func processItems(items []Item, parentPath string, oas *openapi3.T) {
+// Helper function to process items recursively
+func processItems(items []Item, baseURL string, endpoints *[]string, resources *[]core.Resource, tools *[]core.Tool) {
 	for _, item := range items {
+		// If item has nested items, it's a folder
 		if len(item.Item) > 0 {
-			tag := &openapi3.Tag{
+			processItems(item.Item, baseURL, endpoints, resources, tools)
+			continue
+		}
+
+		// Skip items without requests
+		if item.Request == nil {
+			continue
+		}
+
+		// Add endpoint
+		endpoint := item.Request.URL.Raw
+		*endpoints = append(*endpoints, endpoint)
+
+		// If it has a body and it's a GET request, it might be a resource
+		if item.Request.Body != nil && item.Request.Method == "GET" {
+			mimeType := "application/json" // Default MIME type
+
+			// Try to determine MIME type from body options
+			if item.Request.Body.Options != nil && item.Request.Body.Options.Raw != nil {
+				language := item.Request.Body.Options.Raw.Language
+				if language == "json" {
+					mimeType = "application/json"
+				} else if language == "xml" {
+					mimeType = "application/xml"
+				}
+				// Add more MIME type mappings as needed
+			}
+
+			resource := core.Resource{
 				Name:        item.Name,
-				Description: "Operations in " + item.Name,
+				Description: item.Name, // Using name as description if no dedicated description field exists
+				URI:         item.Request.URL.Raw,
+				MimeType:    mimeType,
 			}
-			oas.Tags = append(oas.Tags, tag)
+			*resources = append(*resources, resource)
+		}
 
-			newParentPath := parentPath
-			if parentPath != "" {
-				newParentPath += "." + item.Name
-			} else {
-				newParentPath = item.Name
+		// For non-GET requests, create a Tool
+		if item.Request.Method != "GET" {
+			tool := core.Tool{
+				Name:        item.Name,
+				Description: item.Name, // Using name as description
+				Method:      item.Request.Method,
+				Path:        endpoint,
+				Arguments:   extractArguments(item.Request),
 			}
-			processItems(item.Item, newParentPath, oas)
-		} else if item.Request != nil {
-			processRequest(item, parentPath, oas)
+			*tools = append(*tools, tool)
 		}
 	}
 }
 
-func processRequest(item Item, folderTag string, oas *openapi3.T) {
-	req := item.Request
+// Helper function to extract Arguments from Request
+func extractArguments(request *Request) []core.Argument {
+	arguments := make([]core.Argument, 0)
 
-	parsedURL, err := url.Parse(req.URL.Raw)
-	if err != nil {
-		log.Printf("Warning: failed to parse URL %s: %v", req.URL.Raw, err)
-		return
-	}
-
-	// Add server info if not already present
-	if parsedURL.Host != "" {
-		serverURL := parsedURL.Scheme + "://" + parsedURL.Host
-		serverExists := false
-		for _, s := range oas.Servers {
-			if s.URL == serverURL {
-				serverExists = true
-				break
-			}
-		}
-		if !serverExists {
-			oas.Servers = append(oas.Servers, &openapi3.Server{URL: serverURL})
-		}
-	}
-
-	pathTemplate := convertPathParams(parsedURL.Path)
-	operation := &openapi3.Operation{
-		Summary:     item.Name,
-		Description: item.Name,
-		OperationID: fmt.Sprintf("%s_%s", strings.ToLower(req.Method), sanitizeOperationID(pathTemplate+"_"+item.Name)),
-		Responses:   openapi3.NewResponses(),
-	}
-
-	if folderTag != "" {
-		operation.Tags = strings.Split(folderTag, ".")
-	}
-
-	processRequestHeaders(req, operation)
-	processRequestBody(req, operation)
-	processQueryParams(req, operation)
-	processPathParams(pathTemplate, req, operation)
-	processResponses(item.Response, operation)
-
-	if oas.Paths.Find(pathTemplate) == nil {
-		oas.Paths.Set(pathTemplate, &openapi3.PathItem{})
-	}
-	pathItem := oas.Paths.Find(pathTemplate)
-
-	switch strings.ToUpper(req.Method) {
-	case "GET":
-		pathItem.Get = operation
-	case "POST":
-		pathItem.Post = operation
-	case "PUT":
-		pathItem.Put = operation
-	case "DELETE":
-		pathItem.Delete = operation
-	case "PATCH":
-		pathItem.Patch = operation
-	case "HEAD":
-		pathItem.Head = operation
-	case "OPTIONS":
-		pathItem.Options = operation
-	case "TRACE":
-		pathItem.Trace = operation
-	}
-}
-
-func processRequestHeaders(req *Request, operation *openapi3.Operation) {
-	for _, header := range req.Header {
-		if strings.ToLower(header.Key) == "content-type" {
-			continue
-		}
-		param := &openapi3.Parameter{
-			Name:        header.Key,
-			In:          "header",
-			Description: "Header parameter " + header.Key,
-			Required:    false,
-			Schema: &openapi3.SchemaRef{
-				Value: &openapi3.Schema{
-					Type:    &openapi3.Types{"string"},
-					Example: header.Value,
-				},
-			},
-		}
-		operation.Parameters = append(operation.Parameters, &openapi3.ParameterRef{Value: param})
-	}
-}
-
-func processRequestBody(req *Request, operation *openapi3.Operation) {
-	if req.Body == nil {
-		return
-	}
-
-	content := openapi3.NewContent()
-	switch req.Body.Mode {
-	case "raw":
-		if req.Body.Raw == "" {
-			return
-		}
-		contentType := "text/plain"
-		for _, header := range req.Header {
-			if strings.ToLower(header.Key) == "content-type" {
-				contentType = header.Value
-				break
-			}
-		}
-		if req.Body.Options != nil && req.Body.Options.Raw != nil && req.Body.Options.Raw.Language == "json" {
-			contentType = "application/json"
-		}
-		schema := &openapi3.Schema{Type: &openapi3.Types{"string"}}
-		if strings.Contains(contentType, "json") {
-			var jsonData interface{}
-			if err := json.Unmarshal([]byte(req.Body.Raw), &jsonData); err == nil {
-				schema = inferSchemaFromJSON(jsonData)
-			} else {
-				log.Printf("Warning: failed to parse JSON body: %v", err)
-			}
-		}
-		content[contentType] = &openapi3.MediaType{
-			Schema:  &openapi3.SchemaRef{Value: schema},
-			Example: req.Body.Raw,
-		}
-	}
-
-	if len(content) > 0 {
-		operation.RequestBody = &openapi3.RequestBodyRef{
-			Value: &openapi3.RequestBody{
-				Required: true,
-				Content:  content,
-			},
-		}
-	}
-}
-
-func inferSchemaFromJSON(data interface{}) *openapi3.Schema {
-	switch v := data.(type) {
-	case map[string]interface{}:
-		schema := &openapi3.Schema{
-			Type:       &openapi3.Types{"object"},
-			Properties: make(map[string]*openapi3.SchemaRef),
-		}
-		for key, val := range v {
-			schema.Properties[key] = &openapi3.SchemaRef{Value: inferSchemaFromJSON(val)}
-		}
-		return schema
-	case []interface{}:
-		if len(v) == 0 {
-			return &openapi3.Schema{
-				Type:  &openapi3.Types{"array"},
-				Items: &openapi3.SchemaRef{Value: &openapi3.Schema{Type: &openapi3.Types{"string"}}},
-			}
-		}
-		return &openapi3.Schema{
-			Type:  &openapi3.Types{"array"},
-			Items: &openapi3.SchemaRef{Value: inferSchemaFromJSON(v[0])},
-		}
-	case string:
-		return &openapi3.Schema{Type: &openapi3.Types{"string"}}
-	case float64:
-		if v == float64(int64(v)) {
-			return &openapi3.Schema{Type: &openapi3.Types{"integer"}}
-		}
-		return &openapi3.Schema{Type: &openapi3.Types{"number"}}
-	case bool:
-		return &openapi3.Schema{Type: &openapi3.Types{"boolean"}}
-	case nil:
-		return &openapi3.Schema{Type: &openapi3.Types{"null"}}
-	default:
-		return &openapi3.Schema{Type: &openapi3.Types{"string"}}
-	}
-}
-
-func processQueryParams(req *Request, operation *openapi3.Operation) {
-	for _, query := range req.URL.Query {
-		param := &openapi3.Parameter{
+	// Add URL query parameters as arguments
+	for _, query := range request.URL.Query {
+		arg := core.Argument{
 			Name:        query.Key,
-			In:          "query",
-			Description: "Query parameter " + query.Key,
-			Required:    false,
-			Schema: &openapi3.SchemaRef{
-				Value: &openapi3.Schema{
-					Type:    &openapi3.Types{"string"},
-					Example: query.Value,
-				},
-			},
+			Description: "URL parameter: " + query.Key,
+			Required:    false, // Defaulting to false as Postman doesn't indicate if a parameter is required
 		}
-		operation.Parameters = append(operation.Parameters, &openapi3.ParameterRef{Value: param})
+		arguments = append(arguments, arg)
 	}
+
+	// If the request has a body, try to extract fields from JSON
+	if request.Body != nil && request.Body.Mode == "raw" && request.Body.Raw != "" {
+		// If we have JSON body options, treat it as a JSON object and extract fields
+		if request.Body.Options != nil && request.Body.Options.Raw != nil &&
+			request.Body.Options.Raw.Language == "json" {
+			bodyArgs := extractArgumentsFromJSONBody(request.Body.Raw)
+			arguments = append(arguments, bodyArgs...)
+		}
+	}
+
+	return arguments
 }
 
-func convertPathParams(pathTemplate string) string {
-	var sb strings.Builder
-	segments := strings.Split(pathTemplate, "/")
-	for _, segment := range segments {
-		if segment == "" {
-			continue
-		}
-		if strings.HasPrefix(segment, ":") {
-			sb.WriteString("/{")
-			sb.WriteString(segment[1:])
-			sb.WriteString("}")
-		} else {
-			sb.WriteString("/")
-			sb.WriteString(segment)
-		}
+// Helper function to extract arguments from JSON body
+func extractArgumentsFromJSONBody(jsonBody string) []core.Argument {
+	arguments := make([]core.Argument, 0)
+
+	// In a real implementation, you would parse the JSON and extract field names
+	// Here's a simplified placeholder approach
+	// Note: Actual implementation would require proper JSON parsing
+
+	// For this simplified version, we'll just return a placeholder argument
+	// indicating that the entire JSON body is expected
+	arg := core.Argument{
+		Name:        "body",
+		Description: "Request body",
+		Required:    true,
 	}
-	if sb.Len() == 0 {
-		return "/"
-	}
-	return sb.String()
+	arguments = append(arguments, arg)
+
+	return arguments
 }
 
-func processPathParams(pathTemplate string, req *Request, operation *openapi3.Operation) {
-	segments := strings.Split(pathTemplate, "/")
-	for _, segment := range segments {
-		if strings.HasPrefix(segment, "{") && strings.HasSuffix(segment, "}") {
-			paramName := strings.Trim(segment, "{}")
-			var defaultValue interface{}
-			for _, variable := range req.URL.Query { // Assuming 'Query' is the correct field
-				if variable.Key == paramName {
-					defaultValue = variable.Value
-					break
-				}
-			}
-			param := &openapi3.Parameter{
-				Name:        paramName,
-				In:          "path",
-				Description: "Path parameter " + paramName,
-				Required:    true,
-				Schema: &openapi3.SchemaRef{
-					Value: &openapi3.Schema{
-						Type:    &openapi3.Types{"string"},
-						Default: defaultValue,
-					},
-				},
-			}
-			operation.Parameters = append(operation.Parameters, &openapi3.ParameterRef{Value: param})
+// Helper function to get an endpoint from URL
+func getEndpoint(url URL) string {
+	if len(url.Path) > 0 {
+		return "/" + strings.Join(url.Path, "/")
+	}
+
+	// If no path segments, try to extract path from raw URL
+	if url.Raw != "" {
+		parsedURL, err := urlPkg.Parse(url.Raw)
+		if err == nil && parsedURL.Path != "" {
+			return parsedURL.Path
 		}
 	}
+
+	return "/"
 }
 
-func processResponses(responses []Response, operation *openapi3.Operation) {
-	for _, resp := range responses {
-		statusCode := strconv.Itoa(resp.Code)
-		description := resp.Name
-		response := &openapi3.Response{
-			Description: &description,
-			Content:     openapi3.NewContent(),
-		}
-
-		contentType := "text/plain"
-		for _, header := range resp.Header {
-			if strings.ToLower(header.Key) == "content-type" {
-				contentType = header.Value
-				break
-			}
-		}
-
-		if resp.Body != "" {
-			schema := &openapi3.Schema{Type: &openapi3.Types{"string"}}
-			if strings.Contains(contentType, "json") {
-				var jsonData interface{}
-				if err := json.Unmarshal([]byte(resp.Body), &jsonData); err == nil {
-					schema = inferSchemaFromJSON(jsonData)
-				} else {
-					log.Printf("Warning: failed to parse response JSON: %v", err)
-				}
-			}
-			response.Content[contentType] = &openapi3.MediaType{
-				Schema:  &openapi3.SchemaRef{Value: schema},
-				Example: resp.Body,
-			}
-		}
-		operation.Responses.Set(statusCode, &openapi3.ResponseRef{Value: response})
-	}
-}
-
-func sanitizeOperationID(name string) string {
-	var sb strings.Builder
-	for _, r := range name {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			sb.WriteRune(r)
-		} else {
-			sb.WriteRune('_')
-		}
-	}
-	words := strings.Split(sb.String(), "_")
-	var filteredWords []string
-	for _, word := range words {
-		if word != "" {
-			filteredWords = append(filteredWords, word)
-		}
-	}
-	return strings.Join(filteredWords, "_")
+// Helper function to convert a string to a valid directory name
+func convertToValidDirectoryName(name string) string {
+	// Replace spaces and special characters with underscores
+	reg := regexp.MustCompile(`[^a-zA-Z0-9_]`)
+	return reg.ReplaceAllString(strings.ToLower(name), "_")
 }
