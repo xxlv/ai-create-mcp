@@ -10,14 +10,14 @@ import mcp.server.stdio
 import random
 import argparse
 import re
-
+import os
 # Server state
 state: dict[str, str] = {}
 
 server = Server("{{.ServerName}}")
-TOKEN = ""
-BASE_URL_ON_MISS = ""
 
+TOKEN = os.getenv("TOKEN")
+BASE_URL_ON_MISS = ""
 BASE_URLs = [
 {{- range $i, $url := .Endpoints -}}
     "{{$url}}",
