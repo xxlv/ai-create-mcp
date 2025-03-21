@@ -114,7 +114,7 @@ async def handle_call_tool(name: str, arguments: Optional[Dict]) -> List[types.T
             params = {}
             headers = {"Content-Type": "application/json"}
             headers.update({"Authorization": f"Bearer {TOKEN}"})
-            url = f"{random.choice(BASE_URLs)}{{.Path}}"
+            url = random.choice(BASE_URLs)+"{{.Path}}"
             method = "{{.Method}}".lower()
             
             # Add query parameters (for GET requests)
