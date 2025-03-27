@@ -438,7 +438,7 @@ func main() {
 	flag.StringVar(&name, "name", "", "Project name")
 	flag.StringVar(&oasPath, "oaspath", "", "Oas path,if set ignore postman's config")
 	flag.StringVar(&version, "version", "0.1.0", "Server version")
-	flag.BoolVar(&inspector, "inspector", true, "Open inspector")
+	flag.BoolVar(&inspector, "inspector", false, "Open inspector")
 	flag.StringVar(&description, "description", "Simple mcp", "Project description")
 	flag.BoolVar(&claudeApp, "claudeapp", true, "Enable/disable Claude.app integration")
 	flag.BoolVar(&y, "autoyes", true, "Enable/disable auto yes")
